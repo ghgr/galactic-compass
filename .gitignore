@@ -1,0 +1,8 @@
+# Generated certificates and local HTTPS keys.
+/galactic-compass.crt
+*.key
+*.pem
+
+# Python runtime artifacts.
+__pycache__/
+*.py[cod]

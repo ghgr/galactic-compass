@@ -1,0 +1,1281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#04080e">
+<title>Galactic Compass</title>
+<style>
+:root { color-scheme:dark; --bg:#04080e; --text:#e6edf6; --muted:#9aaabb; --line:#ffffff1c; --gal:#8acddd; --radial:#e9c58a; --tangential:#a6d7ac; --vertical:#c7b1ed; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; overflow:hidden; }
+main { position:relative; width:100%; height:100vh; height:100dvh; overflow:hidden; }
+canvas { position:absolute; inset:0; display:block; width:100%; height:100%; }
+.vignette { position:absolute; inset:0; pointer-events:none; background:linear-gradient(#04080ec9,transparent 23%,transparent 70%,#04080ed9),radial-gradient(ellipse at center,transparent 40%,#04080e55); }
+header { position:absolute; top:0; left:0; right:0; padding:calc(19px + env(safe-area-inset-top)) 24px 18px; display:flex; justify-content:space-between; align-items:center; gap:16px; pointer-events:none; }
+h1 { font:600 14px/1.2 ui-sans-serif,system-ui,sans-serif; letter-spacing:.19em; margin:0; }
+.brand { display:flex; align-items:center; gap:12px; }
+.brand svg { width:29px; height:29px; color:var(--gal); }
+.eyebrow { font-size:9px; letter-spacing:.2em; color:var(--muted); margin-top:6px; }
+.actions { display:flex; gap:8px; pointer-events:auto; }
+button { color:var(--text); border:1px solid #ffffff25; border-radius:12px; background:#09111db3; backdrop-filter:blur(18px); font:inherit; cursor:pointer; min-height:44px; padding:10px 14px; }
+button:hover { background:#1b2b3ed9; }
+button:disabled { opacity:.55; cursor:default; }
+button:focus-visible,a:focus-visible,input:focus-visible { outline:2px solid var(--gal); outline-offset:3px; }
+.icon-button { width:44px; padding:10px; display:grid; place-items:center; }
+.icon-button svg { width:20px; height:20px; }
+[hidden] { display:none !important; }
+.glass { border:1px solid var(--line); background:linear-gradient(125deg,#0a1420d9,#081019bd); backdrop-filter:blur(22px); box-shadow:0 12px 40px #0003; }
+.onboarding { position:absolute; width:min(350px,calc(100% - 48px)); left:50%; top:50%; transform:translate(-50%,-50%); padding:28px; text-align:center; border-radius:22px; }
+.onboarding svg { width:42px; height:42px; color:var(--gal); margin-bottom:16px; }
+.onboarding h2 { font:400 27px/1.2 ui-sans-serif,system-ui,sans-serif; letter-spacing:-.04em; margin:0 0 12px; }
+.onboarding p { color:var(--muted); font-size:12px; margin:0 0 23px; }
+.onboarding button { background:#bce8ec; color:#08131a; border:0; width:100%; font-weight:600; }
+.onboarding .privacy { font-size:10px; margin:14px 0 0; color:#8295a7; }
+.sky-caption { position:absolute; top:calc(87px + env(safe-area-inset-top)); left:24px; font-size:10px; color:var(--muted); display:flex; align-items:center; gap:7px; }
+.status-dot { width:5px; height:5px; background:#7a8c9e; border-radius:50%; }
+.sky-caption[data-ready=true] .status-dot { background:var(--tangential); box-shadow:0 0 9px #a6d7ac66; }
+.hud { position:absolute; bottom:calc(22px + env(safe-area-inset-bottom)); left:24px; right:24px; display:flex; justify-content:space-between; align-items:flex-end; gap:20px; pointer-events:none; }
+.coordinates { padding:15px 20px; border-radius:16px; min-width:300px; }
+.coordinate-title { color:var(--muted); font-size:9px; letter-spacing:.18em; margin-bottom:9px; }
+.equatorial { display:flex; gap:25px; font-variant-numeric:tabular-nums; }
+.equatorial label { display:block; color:var(--gal); font-size:9px; letter-spacing:.12em; }
+.equatorial output { font-size:17px; white-space:nowrap; }
+.galactic { display:flex; justify-content:space-between; gap:18px; margin-top:10px; color:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; }
+.galactic output { color:#c5d1de; }
+.direction { text-align:right; font-size:10px; color:var(--muted); }
+.direction output { color:var(--radial); display:block; font:500 16px/1.5 ui-sans-serif,system-ui,sans-serif; letter-spacing:.08em; }
+.direction p { margin:6px 0; }
+.credit { pointer-events:auto; font-size:9px; color:#98a5b6; }
+a { color:var(--gal); text-decoration:none; }
+a:hover { text-decoration:underline; }
+#sensorStatus { position:absolute; top:calc(91px + env(safe-area-inset-top)); right:24px; left:50%; text-align:right; margin:0; color:var(--muted); font-size:10px; pointer-events:none; }
+#sensorStatus[data-ready=true] { color:var(--tangential); }
+.backdrop { position:absolute; inset:0; background:#0006; backdrop-filter:blur(4px); border:0; border-radius:0; width:100%; }
+.drawer { position:absolute; top:calc(12px + env(safe-area-inset-top)); bottom:calc(12px + env(safe-area-inset-bottom)); right:12px; width:min(380px,calc(100% - 24px)); padding:20px; border-radius:20px; overflow-y:auto; overscroll-behavior:contain; }
+.drawer-heading { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:15px; }
+.drawer-heading h2 { margin:0; font-size:13px; letter-spacing:.12em; }
+section { border-top:1px solid var(--line); padding:17px 0; }
+section h3 { color:var(--muted); font-size:10px; letter-spacing:.13em; margin:0 0 12px; }
+.readout { display:grid; grid-template-columns:1fr auto; gap:7px 12px; font-size:11px; overflow-wrap:anywhere; }
+.readout span:nth-child(odd) { color:var(--muted); }
+.readout span:nth-child(even) { text-align:right; font-variant-numeric:tabular-nums; }
+.note { color:var(--muted); font-size:10px; }
+.toggle { display:flex; gap:10px; align-items:center; padding:7px 0; font-size:12px; }
+input { accent-color:var(--gal); }
+.legend { display:flex; justify-content:space-between; font-size:10px; margin:13px 0; }
+.legend span:nth-child(1) { color:var(--radial); } .legend span:nth-child(2) { color:var(--tangential); } .legend span:nth-child(3) { color:var(--vertical); }
+@media (max-width:600px) {
+  header { padding-left:18px; padding-right:18px; }
+  h1 { font-size:12px; letter-spacing:.13em; } .brand { gap:9px; } .brand svg { width:24px; }
+  .eyebrow { font-size:8px; } .sky-caption { left:18px; top:calc(82px + env(safe-area-inset-top)); font-size:9px; }
+  #sensorStatus { top:calc(106px + env(safe-area-inset-top)); left:18px; right:18px; text-align:left; font-size:9px; }
+  .hud { left:16px; right:16px; bottom:calc(16px + env(safe-area-inset-bottom)); gap:10px; flex-wrap:wrap; }
+  .coordinates { width:100%; min-width:0; padding:12px 15px; }
+  .equatorial { justify-content:space-between; gap:10px; } .equatorial output { font-size:16px; }
+  .direction { width:100%; display:flex; align-items:center; justify-content:space-between; text-align:left; gap:10px; order:-1; }
+  .direction output { font-size:12px; } .direction p { display:none; } .credit { font-size:8px; }
+}
+@media (max-height:500px) and (min-width:601px) {
+  header { padding-top:10px; } .sky-caption { top:68px; } #sensorStatus { top:68px; }
+  .hud { bottom:12px; } .coordinates { padding:10px 16px; } .coordinate-title { margin-bottom:3px; }
+  .equatorial output { font-size:15px; } .galactic { margin-top:5px; }
+  .onboarding { top:52%; padding:20px; width:360px; } .onboarding svg { display:none; } .onboarding h2 { font-size:23px; }
+  .onboarding p { margin-bottom:14px; } .onboarding .privacy { display:none; }
+}
+</style>
+</head>
+<body>
+<main id="instrument">
+  <canvas id="canvas" width="900" height="900" aria-label="Live sky with stars, nebulae and Galactic directions behind your phone"></canvas>
+  <div class="vignette"></div>
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><circle cx="16" cy="16" r="12" stroke="currentColor" stroke-opacity=".4"/><ellipse cx="16" cy="16" rx="15" ry="5" transform="rotate(-35 16 16)" stroke="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/></svg>
+      <div><h1>GALACTIC COMPASS</h1><div class="eyebrow">YOUR WINDOW INTO THE MILKY WAY</div></div>
+    </div>
+    <div class="actions">
+      <button id="fullscreen" class="icon-button" type="button" aria-label="Enter fullscreen" title="Fullscreen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button>
+      <button id="settings" class="icon-button" type="button" aria-label="View settings and sensor details" aria-expanded="false" aria-controls="drawer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="#09111d"/><circle cx="15" cy="12" r="2" fill="#09111d"/><circle cx="9" cy="18" r="2" fill="#09111d"/></svg></button>
+    </div>
+  </header>
+  <div id="skyCaption" class="sky-caption"><span class="status-dot"></span><span id="sceneState">LIVE SKY · J2000</span></div>
+  <p id="sensorStatus" role="status" aria-live="polite">Enable location and compass access to begin.</p>
+  <div id="onboarding" class="onboarding glass">
+    <svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="m24 4 5 15 15 5-15 5-5 15-5-15-15-5 15-5Z" stroke="currentColor"/><circle cx="24" cy="24" r="3" fill="currentColor"/></svg>
+    <h2>Find your place<br>in the Galaxy.</h2>
+    <p>Point the back of your phone at the sky.<br>Move it to explore stars, nebulae<br>and the shape of our Milky Way.</p>
+    <button id="start" type="button">Enable sensors</button>
+    <p class="privacy">Your location stays on this device.</p>
+  </div>
+  <div class="hud">
+    <div class="coordinates glass">
+      <div class="coordinate-title">CENTRE OF VIEW · EQUATORIAL J2000</div>
+      <div class="equatorial"><div><label for="ra">RIGHT ASCENSION</label><output id="ra">—</output></div><div><label for="dec">DECLINATION</label><output id="dec">—</output></div></div>
+      <div class="galactic"><span>GALACTIC ℓ / b</span><output id="lb">—</output></div>
+    </div>
+    <div class="direction"><output id="nearest">—</output><p>NEAREST GALACTIC AXIS</p><a class="credit" href="https://www.eso.org/public/images/eso0932a/" target="_blank" rel="noopener">Sky image: ESO/S. Brunier</a></div>
+  </div>
+  <button id="backdrop" class="backdrop" type="button" aria-label="Close settings" hidden></button>
+  <aside id="drawer" class="drawer glass" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" hidden>
+    <div class="drawer-heading"><h2 id="drawerTitle">SKY &amp; SENSORS</h2><button id="closeSettings" class="icon-button" aria-label="Close settings" type="button">✕</button></div>
+    <section>
+      <h3>SKY LAYERS</h3>
+      <label class="toggle"><input id="imagery" type="checkbox" checked>Milky Way panorama</label>
+      <label class="toggle"><input id="labels" type="checkbox" checked>Star &amp; nebula labels</label>
+      <label class="toggle"><input id="grid" type="checkbox">Galactic coordinate grid</label>
+      <label class="toggle"><input id="horizon" type="checkbox" checked>Local horizon</label>
+      <div class="legend"><span>● IN / OUT</span><span>● ROTATION</span><span>● POLES</span></div>
+      <p class="note">The thin cyan line traces the Galactic plane. Arrow tips guide you toward axes outside the view.</p>
+      <p class="note">This is an enhanced sky atlas. Nebulae are usually much fainter to the eye. The panorama is a historical photograph; planets are not tracked. The atlas also shows directions below your horizon.</p>
+    </section>
+    <section><h3>OBSERVER</h3><div class="readout">
+      <span>Latitude</span><span id="latitude">—</span><span>Longitude</span><span id="longitude">—</span><span>Location accuracy</span><span id="accuracy">—</span><span>Altitude</span><span id="altitude">—</span><span>Location fix</span><span id="fixTime">—</span>
+      <span>Site</span><span id="site">—</span><span>UTC</span><span id="utc">—</span><span>Sidereal time</span><span id="lst">—</span>
+    </div><p id="locationStatus" class="note" role="status">Location access has not started.</p></section>
+    <section><h3>DEVICE ATTITUDE</h3><div class="readout">
+      <span>Heading / Tilt</span><span id="aa">—</span><span>Screen roll</span><span id="rollReading">—</span><span>Attitude update</span><span id="orientationTime">—</span><span>Compass accuracy</span><span id="compassAccuracy">—</span><span>North correction</span><span id="declination">—</span>
+    </div><p id="orientationStatus" class="note" role="status">Compass access has not started.</p>
+    <p class="note">For a steadier compass, move the phone in a figure eight and keep it away from magnets and metal. Heading precision depends on your phone's sensors.</p><button id="stop" type="button" hidden>Stop sensors</button></section>
+    <section><h3>ABOUT THE ATLAS</h3><p class="note">5,023 stars from the <a href="https://cdsarc.cds.unistra.fr/viz-bin/cat/V/50">Yale Bright Star Catalogue</a>, plus selected <a href="https://heasarc.gsfc.nasa.gov/W3Browse/catalog/messier.html">Messier objects</a>. Positions and centre coordinates use an approximate J2000 frame, for visual navigation.</p>
+    <p class="note">Panorama: <a href="https://www.eso.org/public/images/eso0932a/">ESO/S. Brunier</a>, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Resized, reprojected and brightness adjusted. Magnetic north correction: <a href="https://www.ncei.noaa.gov/products/world-magnetic-model">WMM2025</a>, valid through 2029.</p></section>
+  </aside>
+</main>
+<script src="assets/sky-catalog.js"></script>
+
+<script>
+(() => {
+
+const $ = x => document.getElementById(x);
+const C = $("canvas");
+const c = C.getContext("2d");
+
+const R = Math.PI / 180;
+const D = 180 / Math.PI;
+
+const clamp = (x,a,b) => Math.max(a,Math.min(b,x));
+const wrap = x => ((x % 360) + 360) % 360;
+
+const dot = (a,b) =>
+  a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+
+const normalize = v => {
+  const q = Math.hypot(...v);
+  return v.map(x => x/q);
+};
+
+const mv = (M,v) => M.map(row => dot(row,v));
+
+const WMM_COEFFICIENTS = [
+ [1,0,-29351.8,0.0,12.0,0.0],
+ [1,1,-1410.8,4545.4,9.7,-21.5],
+ [2,0,-2556.6,0.0,-11.6,0.0],
+ [2,1,2951.1,-3133.6,-5.2,-27.7],
+ [2,2,1649.3,-815.1,-8.0,-12.1],
+ [3,0,1361.0,0.0,-1.3,0.0],
+ [3,1,-2404.1,-56.6,-4.2,4.0],
+ [3,2,1243.8,237.5,0.4,-0.3],
+ [3,3,453.6,-549.5,-15.6,-4.1],
+ [4,0,895.0,0.0,-1.6,0.0],
+ [4,1,799.5,278.6,-2.4,-1.1],
+ [4,2,55.7,-133.9,-6.0,4.1],
+ [4,3,-281.1,212.0,5.6,1.6],
+ [4,4,12.1,-375.6,-7.0,-4.4],
+ [5,0,-233.2,0.0,0.6,0.0],
+ [5,1,368.9,45.4,1.4,-0.5],
+ [5,2,187.2,220.2,0.0,2.2],
+ [5,3,-138.7,-122.9,0.6,0.4],
+ [5,4,-142.0,43.0,2.2,1.7],
+ [5,5,20.9,106.1,0.9,1.9],
+ [6,0,64.4,0.0,-0.2,0.0],
+ [6,1,63.8,-18.4,-0.4,0.3],
+ [6,2,76.9,16.8,0.9,-1.6],
+ [6,3,-115.7,48.8,1.2,-0.4],
+ [6,4,-40.9,-59.8,-0.9,0.9],
+ [6,5,14.9,10.9,0.3,0.7],
+ [6,6,-60.7,72.7,0.9,0.9],
+ [7,0,79.5,0.0,-0.0,0.0],
+ [7,1,-77.0,-48.9,-0.1,0.6],
+ [7,2,-8.8,-14.4,-0.1,0.5],
+ [7,3,59.3,-1.0,0.5,-0.8],
+ [7,4,15.8,23.4,-0.1,0.0],
+ [7,5,2.5,-7.4,-0.8,-1.0],
+ [7,6,-11.1,-25.1,-0.8,0.6],
+ [7,7,14.2,-2.3,0.8,-0.2],
+ [8,0,23.2,0.0,-0.1,0.0],
+ [8,1,10.8,7.1,0.2,-0.2],
+ [8,2,-17.5,-12.6,0.0,0.5],
+ [8,3,2.0,11.4,0.5,-0.4],
+ [8,4,-21.7,-9.7,-0.1,0.4],
+ [8,5,16.9,12.7,0.3,-0.5],
+ [8,6,15.0,0.7,0.2,-0.6],
+ [8,7,-16.8,-5.2,-0.0,0.3],
+ [8,8,0.9,3.9,0.2,0.2],
+ [9,0,4.6,0.0,-0.0,0.0],
+ [9,1,7.8,-24.8,-0.1,-0.3],
+ [9,2,3.0,12.2,0.1,0.3],
+ [9,3,-0.2,8.3,0.3,-0.3],
+ [9,4,-2.5,-3.3,-0.3,0.3],
+ [9,5,-13.1,-5.2,0.0,0.2],
+ [9,6,2.4,7.2,0.3,-0.1],
+ [9,7,8.6,-0.6,-0.1,-0.2],
+ [9,8,-8.7,0.8,0.1,0.4],
+ [9,9,-12.9,10.0,-0.1,0.1],
+ [10,0,-1.3,0.0,0.1,0.0],
+ [10,1,-6.4,3.3,0.0,0.0],
+ [10,2,0.2,0.0,0.1,-0.0],
+ [10,3,2.0,2.4,0.1,-0.2],
+ [10,4,-1.0,5.3,-0.0,0.1],
+ [10,5,-0.6,-9.1,-0.3,-0.1],
+ [10,6,-0.9,0.4,0.0,0.1],
+ [10,7,1.5,-4.2,-0.1,0.0],
+ [10,8,0.9,-3.8,-0.1,-0.1],
+ [10,9,-2.7,0.9,-0.0,0.2],
+ [10,10,-3.9,-9.1,-0.0,-0.0],
+ [11,0,2.9,0.0,0.0,0.0],
+ [11,1,-1.5,0.0,-0.0,-0.0],
+ [11,2,-2.5,2.9,0.0,0.1],
+ [11,3,2.4,-0.6,0.0,-0.0],
+ [11,4,-0.6,0.2,0.0,0.1],
+ [11,5,-0.1,0.5,-0.1,-0.0],
+ [11,6,-0.6,-0.3,0.0,-0.0],
+ [11,7,-0.1,-1.2,-0.0,0.1],
+ [11,8,1.1,-1.7,-0.1,-0.0],
+ [11,9,-1.0,-2.9,-0.1,0.0],
+ [11,10,-0.2,-1.8,-0.1,0.0],
+ [11,11,2.6,-2.3,-0.1,0.0],
+ [12,0,-2.0,0.0,0.0,0.0],
+ [12,1,-0.2,-1.3,0.0,-0.0],
+ [12,2,0.3,0.7,-0.0,0.0],
+ [12,3,1.2,1.0,-0.0,-0.1],
+ [12,4,-1.3,-1.4,-0.0,0.1],
+ [12,5,0.6,-0.0,-0.0,-0.0],
+ [12,6,0.6,0.6,0.1,-0.0],
+ [12,7,0.5,-0.1,-0.0,-0.0],
+ [12,8,-0.1,0.8,0.0,0.0],
+ [12,9,-0.4,0.1,0.0,-0.0],
+ [12,10,-0.2,-1.0,-0.1,-0.0],
+ [12,11,-1.3,0.1,-0.0,0.0],
+ [12,12,-0.7,0.2,-0.1,-0.1]
+];
+
+/*
+ WMM2025, NOAA NCEI / British Geological Survey (2024).
+ https://www.ncei.noaa.gov/products/world-magnetic-model
+ Coefficients are U.S. Government public-domain material, not subject
+ to copyright. Degree-12 spherical harmonic synthesis, Schmidt
+ normalization, WGS84 geodetic coordinates. No remote location lookup.
+ Update the coefficients after 2029; expired models are not used.
+*/
+function magneticField(latDeg,lonDeg,altitudeMetres,date) {
+  const year = date.getUTCFullYear();
+  const start = Date.UTC(year,0,1);
+  const decimalYear = year+(date.getTime()-start)/(Date.UTC(year+1,0,1)-start);
+  const dt = decimalYear-2025;
+  if (dt < 0 || dt >= 5) return null;
+
+  const lat = latDeg*R, lon = lonDeg*R;
+  const altitude = clamp(altitudeMetres/1000,-1,850);
+  const a = 6378.137, b = 6356.7523142, referenceRadius = 6371.2;
+  const e2 = 1-b*b/(a*a);
+  const N = a/Math.sqrt(1-e2*Math.sin(lat)**2);
+  const x = (N+altitude)*Math.cos(lat);
+  const z = (N*(1-e2)+altitude)*Math.sin(lat);
+  const radius = Math.hypot(x,z);
+  const ct = z/radius, st = Math.max(0,x/radius);
+  const delta = lat-Math.atan2(z,x);
+  const table = () => Array.from({length:13},() => Array(13).fill(0));
+  const p = table(), dp = table(), norm = table();
+  const pole = Array(13).fill(0);
+  p[0][0] = norm[0][0] = pole[0] = 1;
+  let radial = 0, theta = 0, east = 0, poleEast = 0;
+  let index = 0;
+
+  for (let n=1;n<=12;n++) {
+    norm[n][0] = norm[n-1][0]*(2*n-1)/n;
+    const scale = (referenceRadius/radius)**(n+2);
+    for (let m=0;m<=n;m++) {
+      const k = ((n-1)**2-m*m)/((2*n-1)*(2*n-3));
+      if (m > 0)
+        norm[n][m] = norm[n][m-1]*Math.sqrt((n-m+1)*(m===1 ? 2 : 1)/(n+m));
+      if (n === m) {
+        p[n][m] = st*p[n-1][m-1];
+        dp[n][m] = st*dp[n-1][m-1]+ct*p[n-1][m-1];
+      } else {
+        const prev2 = n > 1 ? p[n-2][m] : 0;
+        const dprev2 = n > 1 ? dp[n-2][m] : 0;
+        p[n][m] = ct*p[n-1][m]-k*prev2;
+        dp[n][m] = ct*dp[n-1][m]-st*p[n-1][m]-k*dprev2;
+      }
+      const [, ,g,h,dg,dh] = WMM_COEFFICIENTS[index++];
+      const gn = (g+dt*dg)*norm[n][m];
+      const hn = (h+dt*dh)*norm[n][m];
+      const cos = Math.cos(m*lon), sin = Math.sin(m*lon);
+      const term = gn*cos+hn*sin;
+      radial += (n+1)*scale*term*p[n][m];
+      theta -= scale*term*dp[n][m];
+      east += m*scale*(gn*sin-hn*cos)*p[n][m];
+      // Limit of P_n^1 / sin(theta) at the geographic poles.
+      if (m === 1) {
+        pole[n] = n === 1 ? pole[0] : ct*pole[n-1]-k*pole[n-2];
+        poleEast += scale*(gn*sin-hn*cos)*pole[n];
+      }
+    }
+  }
+  east = st > 1e-10 ? east/st : poleEast;
+  const north = -theta*Math.cos(delta)-radial*Math.sin(delta);
+  return {
+    declination: Math.atan2(east,north)*D,
+    horizontal: Math.hypot(north,east)
+  };
+}
+
+/*
+ IAU Galactic transformation matrix, J2000/ICRS.
+ Rows transform equatorial -> Galactic.
+*/
+const E2G = [
+ [-0.0548755604,-0.8734370902,-0.4838350155],
+ [ 0.4941094279,-0.4448296300, 0.7469822445],
+ [-0.8676661490,-0.1980763734, 0.4559837762]
+];
+
+const G2E = [
+ [E2G[0][0],E2G[1][0],E2G[2][0]],
+ [E2G[0][1],E2G[1][1],E2G[2][1]],
+ [E2G[0][2],E2G[1][2],E2G[2][2]]
+];
+
+function spherical(l,b) {
+  l *= R;
+  b *= R;
+  const cb = Math.cos(b);
+
+  return [
+    cb*Math.cos(l),
+    cb*Math.sin(l),
+    Math.sin(b)
+  ];
+}
+
+function galToEq(l,b) {
+  return mv(G2E,spherical(l,b));
+}
+
+function eqToGal(v) {
+  const g = mv(E2G,v);
+
+  return [
+    wrap(Math.atan2(g[1],g[0])*D),
+    Math.asin(clamp(g[2],-1,1))*D
+  ];
+}
+
+/* ---------- sidereal time ---------- */
+
+function jd(date) {
+  return date.getTime()/86400000 + 2440587.5;
+}
+
+function gmst(date) {
+  const d = jd(date)-2451545.0;
+  return wrap(
+    280.46061837 +
+    360.98564736629*d
+  );
+}
+
+/* ---------- equatorial <-> local ENU ---------- */
+
+function eqToENU(v,latDeg,lstDeg) {
+
+  const ra  = Math.atan2(v[1],v[0]);
+  const dec = Math.asin(v[2]);
+
+  const H   = lstDeg*R-ra;
+  const lat = latDeg*R;
+
+  const cd = Math.cos(dec);
+  const sd = Math.sin(dec);
+
+  return normalize([
+    -cd*Math.sin(H),
+
+    sd*Math.cos(lat)
+      - cd*Math.cos(H)*Math.sin(lat),
+
+    sd*Math.sin(lat)
+      + cd*Math.cos(H)*Math.cos(lat)
+  ]);
+}
+
+function enuToEq(v,latDeg,lstDeg) {
+
+  const [e,n,u] = v;
+  const lat = latDeg*R;
+
+  const xH = -n*Math.sin(lat)+u*Math.cos(lat);
+  const yH = -e;
+  const z  =  n*Math.cos(lat)+u*Math.sin(lat);
+
+  const H   = Math.atan2(yH,xH);
+  const dec = Math.asin(clamp(z,-1,1));
+  const ra  = lstDeg*R-H;
+
+  return [
+    Math.cos(dec)*Math.cos(ra),
+    Math.cos(dec)*Math.sin(ra),
+    Math.sin(dec)
+  ];
+}
+
+/* ENU = east, north, up */
+
+function altAzVector(azDeg,altDeg) {
+
+  const az  = azDeg*R;
+  const alt = altDeg*R;
+
+  const ca = Math.cos(alt);
+
+  return [
+    ca*Math.sin(az),
+    ca*Math.cos(az),
+    Math.sin(alt)
+  ];
+}
+
+function vectorAltAz(v) {
+
+  return [
+    wrap(Math.atan2(v[0],v[1])*D),
+    Math.asin(clamp(v[2],-1,1))*D
+  ];
+}
+
+/* ---------- live observer / attitude ---------- */
+
+const sensors = {
+  active: false,
+  requesting: false,
+  generation: 0,
+  watchId: null,
+  orientationListening: false,
+  absoluteSensor: null,
+  attitude: null,
+  location: null,
+  orientation: null,
+  // Safari's Euler yaw has an arbitrary origin. Anchor it to its compass
+  // while the portrait top edge has a usable horizontal projection.
+  safariOffset: null,
+  field: null,
+  fieldDay: null,
+  orientationStarted: 0,
+  locationMessage: "Location access has not started.",
+  orientationMessage: "Compass access has not started."
+};
+
+const ORIENTATION_MAX_AGE = 5000;
+const LOCATION_MAX_AGE = 120000;
+
+// W3C intrinsic Z-X'-Y'' rotation: natural device axes -> local ENU.
+// Use the whole basis, rather than treating beta/gamma as pitch/roll.
+function deviceMatrix(alpha,beta,gamma) {
+  const [a,b,g] = [alpha,beta,gamma].map(x => x*R);
+  const [ca,sa,cb,sb,cg,sg] = [
+    Math.cos(a),Math.sin(a),Math.cos(b),Math.sin(b),Math.cos(g),Math.sin(g)
+  ];
+  return [
+    [ca*cg-sa*sb*sg, -sa*cb, ca*sg+sa*sb*cg],
+    [sa*cg+ca*sb*sg,  ca*cb, sa*sg-ca*sb*cg],
+    [-cb*sg,          sb,    cb*cg]
+  ];
+}
+
+function rotateHeading(v,degrees) {
+  const a = degrees*R;
+  return [v[0]*Math.cos(a)+v[1]*Math.sin(a),
+          -v[0]*Math.sin(a)+v[1]*Math.cos(a),v[2]];
+}
+
+function screenAngle() {
+  if (Number.isFinite(window.screen?.orientation?.angle))
+    return window.screen.orientation.angle;
+  return Number.isFinite(window.orientation) ? window.orientation : 0;
+}
+
+function camera(reading,declination,angle=screenAngle()) {
+  const M = reading.matrix ?? deviceMatrix(reading.alpha,reading.beta,reading.gamma);
+  const a = angle*R;
+  const northOffset = reading.northOffset+declination;
+  const toENU = v => rotateHeading(mv(M,v),northOffset);
+  return {
+    // Look through the screen in the rear camera's direction (-device Z).
+    forward: toENU([0,0,-1]),
+    right: toENU([Math.cos(a),-Math.sin(a),0]),
+    up: toENU([Math.sin(a),Math.cos(a),0])
+  };
+}
+
+function observerState() {
+  const date = new Date();
+  const location = sensors.location;
+  if (!location || date.getTime()-location.timestamp > LOCATION_MAX_AGE)
+    return null;
+  // Recalculate at most once per UTC day or whenever the location changes.
+  const day = Math.floor(date.getTime()/86400000);
+  if (sensors.fieldDay !== day) {
+    sensors.field = magneticField(location.lat,location.lon,location.altitude ?? 0,date);
+    sensors.fieldDay = day;
+  }
+  return {date,lat:location.lat,lon:location.lon,lst:wrap(gmst(date)+location.lon)};
+}
+
+function state() {
+  const observer = observerState();
+  const reading = sensors.orientation;
+  if (!sensors.active || document.hidden || !observer || !reading ||
+      !sensors.field || sensors.field.horizontal < 2000) return null;
+  return {...observer,camera:camera(reading,sensors.field.declination)};
+}
+
+/* ---------- sky projection ---------- */
+
+const view = {width:900,height:900,dpr:1};
+const focalLength = () => Math.min(view.width,view.height)/2/Math.tan(55*R);
+function resizeCanvas() {
+  view.width = C.clientWidth || window.innerWidth || 900;
+  view.height = C.clientHeight || window.innerHeight || 900;
+  view.dpr = Math.min(window.devicePixelRatio || 1,2);
+  C.width = Math.round(view.width*view.dpr);
+  C.height = Math.round(view.height*view.dpr);
+  requestDraw();
+}
+
+function project(v,cam) {
+  const z = dot(v,cam.forward), f = focalLength();
+  return {x:view.width/2+f*dot(v,cam.right)/z,
+    y:view.height/2-f*dot(v,cam.up)/z,z};
+}
+function inView(q,margin=0) {
+  return q.z > .03 && q.x >= margin && q.x <= view.width-margin &&
+    q.y >= margin && q.y <= view.height-margin;
+}
+function galENU(l,b,s) {return eqToENU(galToEq(l,b),s.lat,s.lst);}
+function equatorial(v) {
+  return [wrap(Math.atan2(v[1],v[0])*D),Math.asin(clamp(v[2],-1,1))*D];
+}
+function formatRA(degrees) {
+  // Round before decomposing so 59.5 seconds carry correctly into minutes.
+  const seconds = Math.round(wrap(degrees)/15*3600)%86400;
+  const pad = x => String(x).padStart(2,"0");
+  return `${pad(Math.floor(seconds/3600))}h ${pad(Math.floor(seconds/60)%60)}m ${pad(seconds%60)}s`;
+}
+function formatDec(degrees) {
+  const minutes = Math.round(Math.abs(clamp(degrees,-90,90))*60);
+  return `${degrees<0 ? "−" : "+"}${String(Math.floor(minutes/60)).padStart(2,"0")}° ${String(minutes%60).padStart(2,"0")}′`;
+}
+
+const dirs = [
+ {id:"gc",text:"GC",name:"INWARD",l:0,b:0,color:"#e9c58a"},
+ {id:"pro",text:"+ROT",name:"PROGRADE",l:90,b:0,color:"#a6d7ac"},
+ {id:"anti",text:"AC",name:"OUTWARD",l:180,b:0,color:"#e9c58a"},
+ {id:"ret",text:"−ROT",name:"RETROGRADE",l:270,b:0,color:"#a6d7ac"},
+ {id:"ngp",text:"+Z",name:"N GAL POLE",l:0,b:90,color:"#c7b1ed"},
+ {id:"sgp",text:"−Z",name:"S GAL POLE",l:0,b:-90,color:"#c7b1ed"}
+];
+const stars = (window.SKY_CATALOG?.stars ?? []).map(([hr,ra,dec,mag,bv,name]) =>
+  ({hr,eq:spherical(ra,dec),ra,dec,mag,bv,name}));
+const deepSky = (window.SKY_CATALOG?.deep ?? []).map(([id,name,ra,dec,size,mag,kind]) =>
+  ({id,name,eq:spherical(ra,dec),ra,dec,size,mag,kind}));
+
+/* A real equirectangular Galactic panorama: l=0 at the middle, north up,
+   longitude increasing toward the left. Render spherical rays on the GPU;
+   a small CPU image provides the same geometry if WebGL is unavailable. */
+let panoramaImage = null, panoramaRenderer = null;
+function panoramaUV(g) {
+  return [((.5-Math.atan2(g[1],g[0])/(2*Math.PI))%1+1)%1,
+    .5-Math.asin(clamp(g[2],-1,1))/Math.PI];
+}
+function makePanoramaRenderer(image) {
+  const surface = document.createElement("canvas");
+  const gl = surface.getContext("webgl",{alpha:false,antialias:false});
+  if (!gl) return makeCPUPanorama(image);
+  const program = gl.createProgram();
+  const shaders = [
+    [gl.VERTEX_SHADER,"attribute vec2 position; void main(){gl_Position=vec4(position,0.,1.);}"],
+    [gl.FRAGMENT_SHADER,`precision mediump float;
+      uniform sampler2D sky; uniform vec2 resolution; uniform float focal;
+      uniform vec3 forward, right, up;
+      void main() {
+        vec2 xy=(gl_FragCoord.xy-resolution*.5)/focal;
+        vec3 ray=normalize(forward+xy.x*right+xy.y*up);
+        vec2 uv=vec2(.5-atan(ray.y,ray.x)/6.28318530718,.5-asin(clamp(ray.z,-1.,1.))/3.14159265359);
+        vec3 color=texture2D(sky,uv).rgb;
+        gl_FragColor=vec4(pow(color,vec3(.92))*1.08+vec3(.009,.017,.029),1.);
+      }`]
+  ];
+  for (const [type,source] of shaders) {
+    const shader = gl.createShader(type); gl.shaderSource(shader,source); gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader,gl.COMPILE_STATUS)) return makeCPUPanorama(image);
+    gl.attachShader(program,shader);
+  }
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program,gl.LINK_STATUS)) return makeCPUPanorama(image);
+  gl.useProgram(program);
+  const buffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
+  const position = gl.getAttribLocation(program,"position");
+  gl.enableVertexAttribArray(position); gl.vertexAttribPointer(position,2,gl.FLOAT,false,0,0);
+  const texture = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,texture);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGB,gl.RGB,gl.UNSIGNED_BYTE,image);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  const uniforms = Object.fromEntries(["resolution","focal","forward","right","up"].map(key =>
+    [key,gl.getUniformLocation(program,key)]));
+  let fallback = null;
+  surface.addEventListener("webglcontextlost",event => {
+    event.preventDefault(); fallback = makeCPUPanorama(image); requestDraw();
+  });
+  return basis => {
+    if (fallback) return fallback(basis);
+    if (surface.width !== C.width || surface.height !== C.height) {
+      surface.width=C.width; surface.height=C.height;
+    }
+    gl.viewport(0,0,surface.width,surface.height);
+    gl.uniform2f(uniforms.resolution,surface.width,surface.height);
+    gl.uniform1f(uniforms.focal,focalLength()*view.dpr);
+    for (const key of ["forward","right","up"]) gl.uniform3fv(uniforms[key],basis[key]);
+    gl.drawArrays(gl.TRIANGLES,0,6);
+    c.drawImage(surface,0,0,view.width,view.height);
+  };
+}
+function makeCPUPanorama(image) {
+  const source=document.createElement("canvas"); source.width=image.width; source.height=image.height;
+  const context=source.getContext("2d"); context.drawImage(image,0,0);
+  const pixels=context.getImageData(0,0,source.width,source.height).data;
+  const surface=document.createElement("canvas"), target=surface.getContext("2d");
+  let frame=null;
+  return basis => {
+    // Bound work on phones that disable WebGL. Stars and HUD stay sharp.
+    const scale=280/Math.max(view.width,view.height);
+    const w=Math.round(view.width*scale), h=Math.round(view.height*scale), f=focalLength()*scale;
+    if (surface.width !== w || surface.height !== h) {
+      surface.width=w; surface.height=h; frame=target.createImageData(w,h);
+    }
+    for (let y=0;y<h;y++) for (let x=0;x<w;x++) {
+      const dx=(x+.5-w/2)/f, dy=(h/2-y-.5)/f;
+      // Avoid allocating vectors for every pixel in the mobile fallback.
+      const gx=basis.forward[0]+dx*basis.right[0]+dy*basis.up[0];
+      const gy=basis.forward[1]+dx*basis.right[1]+dy*basis.up[1];
+      const gz=basis.forward[2]+dx*basis.right[2]+dy*basis.up[2];
+      let u=.5-Math.atan2(gy,gx)/(2*Math.PI);
+      if (u>=1) u-=1;
+      const v=.5-Math.asin(clamp(gz/Math.hypot(gx,gy,gz),-1,1))/Math.PI;
+      const k=(Math.min(source.height-1,Math.floor(v*source.height))*source.width+Math.floor(u*source.width))*4;
+      const j=(y*w+x)*4;
+      for (let n=0;n<3;n++) frame.data[j+n]=clamp(pixels[k+n]*1.08+(n===0 ? 2 : n===1 ? 4 : 7),0,255);
+      frame.data[j+3]=255;
+    }
+    target.putImageData(frame,0,0); c.drawImage(surface,0,0,view.width,view.height);
+  };
+}
+function loadPanorama() {
+  if (!window.Image || !document.createElement) return;
+  const image=new Image();
+  image.onload=() => {
+    panoramaImage=image;
+    try {panoramaRenderer=makePanoramaRenderer(image);} catch {panoramaRenderer=null;}
+    requestDraw();
+  };
+  image.src="assets/milky-way.jpg";
+}
+
+/* ---------- drawing ---------- */
+let labelBoxes=[];
+function resetLabelBoxes() {
+  const mobile=view.width<=600;
+  labelBoxes=[{x:0,y:0,w:view.width,h:mobile ? 130 : 115},
+    {x:0,y:view.height-(mobile ? 175 : 135),w:view.width,h:mobile ? 175 : 135},
+    {x:view.width/2-28,y:view.height/2-28,w:56,h:56}];
+}
+function reserveLabel(x,y,w,h) {
+  const box={x:x-5,y:y-5,w:w+10,h:h+10};
+  if (box.x<8 || box.y<8 || box.x+box.w>view.width-8 || box.y+box.h>view.height-8 ||
+    labelBoxes.some(b => box.x<b.x+b.w && box.x+box.w>b.x && box.y<b.y+b.h && box.y+box.h>b.y)) return false;
+  labelBoxes.push(box); return true;
+}
+function polyline(points,convert,s,color,width,alpha) {
+  c.save(); c.strokeStyle=color; c.lineWidth=width; c.globalAlpha=alpha; c.beginPath();
+  let previous=null;
+  for (const p of points) {
+    const q=project(convert(p,s),s.camera);
+    if (!inView(q,-25)) {previous=null; continue;}
+    if (!previous || Math.hypot(q.x-previous.x,q.y-previous.y)>Math.min(view.width,view.height)*.25)
+      c.moveTo(q.x,q.y);
+    else c.lineTo(q.x,q.y);
+    previous=q;
+  }
+  c.stroke(); c.restore();
+}
+function galConvert(p,s) {return galENU(p[0],p[1],s);}
+function horizontalConvert(p) {return altAzVector(p[0],p[1]);}
+const galacticPlane=Array.from({length:181},(_,i) => [i*2,0]);
+const horizonLine=Array.from({length:181},(_,i) => [i*2,0]);
+function marker(v,d,s,edge=false) {
+  const q=project(v,s.camera), top=view.width<=600 ? 145 : 130;
+  const bottom=view.height-(view.width<=600 ? 190 : 155);
+  let x=q.x,y=q.y;
+  const inside=inView(q,28) && y>top && y<bottom;
+  if (!inside && !edge) return;
+  c.save(); c.strokeStyle=d.color; c.fillStyle=d.color; c.lineWidth=1.2;
+  if (!inside) {
+    const dx=dot(v,s.camera.right), dy=-dot(v,s.camera.up);
+    // Edge cues indicate the shortest great-circle turn, including rays behind us.
+    if (Math.hypot(dx,dy)<1e-6) {c.restore();return;}
+    const cx=view.width/2, cy=(top+bottom)/2;
+    const factor=Math.min((view.width/2-25)/Math.max(Math.abs(dx),1e-6),
+      (bottom-top)/2/Math.max(Math.abs(dy),1e-6));
+    x=cx+dx*factor; y=cy+dy*factor;
+    const angle=Math.atan2(dy,dx);
+    c.translate(x,y); c.rotate(angle);
+    c.beginPath(); c.moveTo(5,0); c.lineTo(-4,-4); c.lineTo(-4,4); c.closePath(); c.fill();
+    c.rotate(-angle); c.translate(-x,-y);
+    const tx=x>view.width/2 ? x-13 : x+13;
+    c.font="10px ui-monospace,monospace"; c.textBaseline="middle";
+    const w=c.measureText(d.text).width;
+    const lx=x>view.width/2 ? tx-w : tx;
+    if (reserveLabel(lx,y-7,w,14)) {c.textAlign="left"; c.fillText(d.text,lx,y);}
+  } else {
+    c.beginPath(); c.arc(x,y,d.id==="gc" ? 8 : 5,0,2*Math.PI); c.stroke();
+    c.beginPath(); c.arc(x,y,1.5,0,2*Math.PI); c.fill();
+    c.font="11px ui-monospace,monospace"; c.textAlign="left"; c.textBaseline="middle";
+    const text=d.id==="gc" ? "GALACTIC CENTRE" : d.text;
+    const w=c.measureText(text).width;
+    const offset=Math.hypot(x-view.width/2,y-view.height/2)<40 ? 38 : 14;
+    if (reserveLabel(x+offset,y-8,w,16)) c.fillText(text,x+offset,y);
+  }
+  c.restore();
+}
+function drawCardinals(s) {
+  c.save(); c.fillStyle="#bccbd9"; c.font="11px ui-monospace,monospace";
+  c.textAlign="left"; c.textBaseline="top";
+  for (const [az,label] of [[0,"N"],[90,"E"],[180,"S"],[270,"W"]]) {
+    const q=project(altAzVector(az,0),s.camera);
+    if (inView(q,20) && reserveLabel(q.x-4,q.y+9,10,15)) c.fillText(label,q.x-4,q.y+9);
+  }
+  c.restore();
+}
+function drawReticle() {
+  c.save(); c.translate(view.width/2,view.height/2);
+  c.strokeStyle="#dce9ef99"; c.lineWidth=1;
+  c.beginPath(); c.arc(0,0,18,0,2*Math.PI); c.stroke();
+  c.beginPath();
+  for (const [x,y] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+    c.moveTo(x*23,y*23); c.lineTo(x*33,y*33);
+  }
+  c.stroke(); c.fillStyle="#dce9ef"; c.fillRect(-1,-1,2,2); c.restore();
+}
+function drawStars(eqCamera) {
+  const candidates=[];
+  c.save();
+  for (const star of stars) {
+    const q=project(star.eq,eqCamera); if (!inView(q,3)) continue;
+    const size=clamp(2.5*Math.pow(10,-.14*(star.mag+1)),.45,2.6);
+    c.fillStyle=star.bv>1.0 ? "#ffd2ab" : star.bv<.1 ? "#c2daff" : "#eef1ee";
+    c.globalAlpha=clamp(1.15-star.mag*.13,.18,1);
+    if (star.mag<1.5) {
+      c.save(); c.globalAlpha=.2; c.shadowColor=c.fillStyle; c.shadowBlur=12;
+      c.beginPath(); c.arc(q.x,q.y,size+1,0,2*Math.PI); c.fill(); c.restore();
+    }
+    c.beginPath(); c.arc(q.x,q.y,size,0,2*Math.PI); c.fill();
+    if (star.name && star.mag<2.2) candidates.push({q,name:star.name,subtitle:null,
+      score:star.mag+.7*Math.hypot(q.x-view.width/2,q.y-view.height/2)/view.width,color:"#b9c9dc"});
+  }
+  c.restore(); return candidates;
+}
+function drawDeepSky(eqCamera) {
+  const candidates=[], placed=[];
+  c.save();
+  for (const object of deepSky) {
+    const q=project(object.eq,eqCamera); if (!inView(q,12)) continue;
+    if (placed.some(p => Math.hypot(q.x-p.x,q.y-p.y)<12)) continue;
+    placed.push(q);
+    const color=object.kind==="nebula" ? "#d8aeca" : object.kind==="galaxy" ? "#d8c7a6" : "#a9cddd";
+    c.strokeStyle=color; c.fillStyle=color; c.globalAlpha=.65; c.lineWidth=.8;
+    c.beginPath();
+    if (object.kind==="galaxy") c.ellipse(q.x,q.y,5,2.5,-.5,0,2*Math.PI);
+    else if (object.kind==="cluster") c.arc(q.x,q.y,4,0,2*Math.PI);
+    else {c.moveTo(q.x,q.y-4);c.lineTo(q.x+4,q.y);c.lineTo(q.x,q.y+4);c.lineTo(q.x-4,q.y);c.closePath();}
+    c.stroke();
+    candidates.push({q,name:object.name,subtitle:`${object.id} · ${object.kind.toUpperCase()}`,
+      score:object.mag*.18-1+Math.hypot(q.x-view.width/2,q.y-view.height/2)/view.width,color});
+  }
+  c.restore(); return candidates;
+}
+function drawObjectLabels(candidates) {
+  if (!$("labels").checked) return;
+  const limit=view.width<=600 ? 4 : 6;
+  let count=0;
+  c.save(); c.font="11px ui-sans-serif,system-ui,sans-serif"; c.textAlign="left"; c.textBaseline="top";
+  for (const object of candidates.sort((a,b) => a.score-b.score)) {
+    if (count>=limit) break;
+    const offset=Math.hypot(object.q.x-view.width/2,object.q.y-view.height/2)<40 ? 38 : 13;
+    const x=object.q.x+offset, y=object.q.y-7;
+    const width=Math.max(c.measureText(object.name).width,object.subtitle ? object.subtitle.length*5.3 : 0);
+    if (!reserveLabel(x,y,width,object.subtitle ? 28 : 15)) continue;
+    c.fillStyle=object.color; c.shadowColor="#03070d"; c.shadowBlur=5;
+    c.fillText(object.name,x,y);
+    if (object.subtitle) {
+      c.save(); c.font="8px ui-monospace,monospace"; c.globalAlpha=.6;
+      c.fillText(object.subtitle,x,y+16); c.restore();
+    }
+    count++;
+  }
+  c.restore();
+}
+function draw() {
+  const s=state(); updateSensorUI(s);
+  c.setTransform(view.dpr,0,0,view.dpr,0,0);
+  c.clearRect(0,0,view.width,view.height);
+  c.fillStyle="#04080e"; c.fillRect(0,0,view.width,view.height);
+  if (!s) {
+    if (panoramaImage) {
+      c.save(); c.globalAlpha=.65;
+      // A welcome photograph, without a fabricated observer or heading.
+      const scale=Math.max(view.width/panoramaImage.width,view.height/panoramaImage.height);
+      const w=panoramaImage.width*scale,h=panoramaImage.height*scale;
+      c.drawImage(panoramaImage,(view.width-w)/2,(view.height-h)/2,w,h); c.restore();
+    }
+    return;
+  }
+  const eqCamera=Object.fromEntries(["forward","right","up"].map(key =>
+    [key,enuToEq(s.camera[key],s.lat,s.lst)]));
+  if ($("imagery").checked && panoramaRenderer)
+    panoramaRenderer(Object.fromEntries(Object.entries(eqCamera).map(([key,v]) => [key,mv(E2G,v)])));
+  resetLabelBoxes();
+  const candidates=drawStars(eqCamera).concat(drawDeepSky(eqCamera));
+  // The plane remains visible with the optional coordinate mesh switched off.
+  polyline(galacticPlane,galConvert,s,"#8acddd",1,.42);
+  if ($("grid").checked) {
+    for (let b=-60;b<=60;b+=30) {
+      if (b) polyline(galacticPlane.map(([l]) => [l,b]),galConvert,s,"#598496",.6,.28);
+    }
+    for (let l=0;l<360;l+=30)
+      polyline(Array.from({length:90},(_,i) => [l,i*2-89]),galConvert,s,"#598496",.6,.28);
+  }
+  if ($("horizon").checked) {
+    polyline(horizonLine,horizontalConvert,s,"#b2c1d0",1,.42); drawCardinals(s);
+  }
+  const ranked=dirs.map(d => ({d,v:galENU(d.l,d.b,s)}))
+    .map(item => ({...item,angle:Math.acos(clamp(dot(item.v,s.camera.forward),-1,1))*D}))
+    .sort((a,b) => a.angle-b.angle);
+  for (const {v,d,angle} of ranked) marker(v,d,s,angle<=110);
+  drawObjectLabels(candidates); drawReticle();
+  const [ra,dec]=equatorial(eqCamera.forward), [l,b]=eqToGal(eqCamera.forward);
+  setText("ra",formatRA(ra)); setText("dec",formatDec(dec));
+  setText("lb",`${l.toFixed(1)}° / ${b.toFixed(1)}°`);
+  setText("nearest",`${ranked[0].d.name} · ${ranked[0].angle.toFixed(1)}°`);
+  const alt=vectorAltAz(s.camera.forward)[1];
+  setText("sceneState",alt<-.1 ? "LIVE SKY · BELOW YOUR HORIZON" : "LIVE SKY · J2000");
+}
+
+/* ---------- sensor permissions and lifecycle ---------- */
+
+function setText(id,value) {
+  if ($(id).textContent !== value) $(id).textContent = value;
+}
+
+function updateSensorUI(s) {
+  const now = Date.now();
+  const location = sensors.location;
+  const observer = observerState();
+  const reading = sensors.orientation;
+  const attitude = sensors.attitude;
+  const freshAttitude = attitude && now-attitude.timestamp <= ORIENTATION_MAX_AGE;
+  const freshOrientation = reading && now-reading.timestamp <= ORIENTATION_MAX_AGE;
+  const field = sensors.field;
+  const freshLocation = Boolean(observer);
+  const coord = (x,pos,neg) => `${Math.abs(x).toFixed(6)}°${x>=0 ? pos : neg}`;
+  setText("utc",new Date(now).toISOString().slice(0,19).replace("T"," ")+"Z");
+  setText("site",location ? `${coord(location.lat,"N","S")} ${coord(location.lon,"E","W")}` : "—");
+  setText("lst",observer ? (observer.lst/15).toFixed(3)+"h" : "—");
+  setText("latitude",location ? coord(location.lat,"N","S") : "—");
+  setText("longitude",location ? coord(location.lon,"E","W") : "—");
+  setText("accuracy",location ? `±${Math.ceil(location.accuracy)} m` : "—");
+  setText("altitude",location && Number.isFinite(location.altitude) ?
+    `${Math.round(location.altitude)} m${Number.isFinite(location.altitudeAccuracy) ? ` ±${Math.ceil(location.altitudeAccuracy)} m` : ""}` : "Unavailable");
+  setText("fixTime",location ? `${Math.max(0,Math.floor((now-location.timestamp)/1000))} s ago` : "—");
+  setText("locationStatus",location && !freshLocation ?
+    "Location fix is stale. Waiting for a fresh position." : sensors.locationMessage);
+
+  let orientationMessage = sensors.orientationMessage;
+  if (reading && !freshOrientation)
+    orientationMessage = "Holding the last attitude. Move the phone to refresh; some browsers send readings only when it moves.";
+  else if (sensors.active && !attitude && sensors.orientationListening &&
+           now-sensors.orientationStarted > 10000 && sensors.orientationMessage === "Waiting for compass readings…")
+    orientationMessage = "No compass readings. Check motion permissions or use a phone browser with compass support.";
+  setText("orientationStatus",orientationMessage);
+  setText("orientationTime",attitude ? `${Math.max(0,Math.floor((now-attitude.timestamp)/1000))} s ago` : "—");
+  setText("compassAccuracy",reading ?
+    (Number.isFinite(reading.accuracy) ? `±${reading.accuracy.toFixed(1)}°` : "Not reported") : "—");
+  setText("declination",freshLocation && field ? `${field.declination.toFixed(1)}°` : "—");
+  if (freshLocation && !field)
+    setText("orientationStatus","The magnetic north model has expired. Update WMM2025 to align the sky.");
+  else if (freshLocation && field.horizontal < 2000)
+    setText("orientationStatus","Compass heading is unreliable this close to a magnetic pole.");
+
+  if (attitude) {
+    // Tilt and roll need gravity, not a north reference or a GPS fix. The
+    // alpha=0 fallback is used only for vertical components, never heading.
+    const cam = camera({...attitude,alpha:attitude.alpha ?? 0,northOffset:0},0);
+    const alt = vectorAltAz(cam.forward)[1];
+    const horizontal = Math.hypot(cam.forward[0],cam.forward[1]);
+    const az = s && horizontal > 1e-6 ? vectorAltAz(s.camera.forward)[0] : null;
+    setText("aa",`${az !== null ? az.toFixed(1)+"°" : "—"} / ${alt.toFixed(1)}°`);
+    // A level camera's right axis has no vertical component. Roll becomes
+    // undefined when looking exactly at the zenith/nadir.
+    setText("rollReading",horizontal > 1e-6 ?
+      `${(Math.atan2(cam.right[2],cam.up[2])*D).toFixed(1)}°` : "—");
+  } else {
+    for (const id of ["aa","rollReading"]) setText(id,"—");
+  }
+  if (!s) {
+    for (const id of ["lb","nearest","ra","dec"]) setText(id,"—");
+    setText("sceneState","LIVE SKY · J2000");
+  }
+  $("onboarding").hidden = Boolean(s);
+
+  let message = "Enable location and compass access to begin.";
+  if (!window.isSecureContext) message = "Open this page over HTTPS to use location and motion sensors.";
+  else if (sensors.active) {
+    if (document.hidden) message = "Sensors paused while the page is hidden.";
+    else if (s && !freshOrientation) message = "Holding the last attitude; move the phone to refresh.";
+    else if (s) message = location.accuracy > 100 ?
+      "Tracking live. Location is approximate; enable precise location in your phone settings." : "Tracking live location and attitude.";
+    else if (freshAttitude && !reading) message = "Tilt and roll are live; waiting for a compass heading.";
+    else if (!freshLocation && !freshOrientation) message = "Waiting for location and compass.";
+    else if (!freshLocation) message = "Waiting for a location fix.";
+    else message = "Waiting for compass alignment.";
+  }
+  setText("sensorStatus",message);
+  $("sensorStatus").dataset.ready = String(Boolean(s) && Boolean(freshOrientation));
+  $("skyCaption").dataset.ready = $("sensorStatus").dataset.ready;
+  $("start").hidden = Boolean(s) && Boolean(freshOrientation);
+  $("start").disabled = sensors.requesting || !window.isSecureContext;
+  setText("start",sensors.requesting ? "Allow access…" : sensors.active ? "Retry sensors" : "Enable sensors");
+  $("stop").hidden = !sensors.active;
+}
+
+function onOrientation(event) {
+  // The browser enforces sensor access. Do not discard delivered readings
+  // because a separate permission request was unsupported or unsuccessful.
+  if (!sensors.active || !sensors.orientationListening || document.hidden) return;
+  const {alpha,beta,gamma} = event;
+  const source = Number.isFinite(event.webkitCompassHeading) ? "webkit" : event.type;
+  if ([beta,gamma].every(Number.isFinite)) {
+    sensors.attitude = {alpha:Number.isFinite(alpha) ? alpha : null,beta,gamma,source,timestamp:Date.now()};
+    requestDraw();
+  }
+  if (![alpha,beta,gamma].every(Number.isFinite)) {
+    // A null absolute event means the browser can no longer supply a
+    // compass pose; relative events from a parallel stream are ignored.
+    if (event.absolute && (!sensors.orientation || sensors.orientation.source === source)) {
+      sensors.orientation = null;
+      if (sensors.attitude?.source === source) sensors.attitude = null;
+      sensors.orientationMessage = "Compass readings unavailable. Check motion permissions and retry.";
+      requestDraw();
+    }
+    return;
+  }
+  let northOffset = 0;
+  let accuracy = null;
+  const isSafariCompass = Number.isFinite(event.webkitCompassHeading);
+  if (isSafariCompass) {
+    accuracy = event.webkitCompassAccuracy;
+    if (event.webkitCompassHeading < 0 || event.webkitCompassHeading >= 360 ||
+        (Number.isFinite(accuracy) && accuracy < 0)) {
+      sensors.orientation = null;
+      sensors.orientationMessage = "Compass needs calibration. Move the phone in a figure eight away from metal.";
+      requestDraw();
+      return;
+    }
+    const top = mv(deviceMatrix(alpha,beta,gamma),[0,1,0]);
+    if (Math.hypot(top[0],top[1]) > .2)
+      sensors.safariOffset = wrap(event.webkitCompassHeading-vectorAltAz(top)[0]);
+    if (sensors.safariOffset === null) {
+      sensors.orientationMessage = "Tilt the phone toward horizontal briefly to align its compass, then point at the sky.";
+      requestDraw();
+      return;
+    }
+    northOffset = sensors.safariOffset;
+  } else if (!event.absolute) {
+    // Relative gyro yaw has no north reference. Never label it as sky data.
+    if (!sensors.orientation) {
+      sensors.orientationMessage = "Tilt and roll are available. Waiting for an absolute compass heading.";
+      requestDraw();
+    }
+    return;
+  }
+  sensors.orientation = {alpha,beta,gamma,northOffset,accuracy,source,timestamp:Date.now()};
+  sensors.orientationMessage = Number.isFinite(accuracy) && accuracy > 15 ?
+    "Compass accuracy is low. Move the phone in a figure eight away from metal." :
+    "Compass aligned to geographic north; view follows the back of your phone.";
+  requestDraw();
+}
+
+function startOrientation() {
+  if (!sensors.active || document.hidden) return;
+  sensors.orientationListening = true;
+  sensors.orientationStarted = Date.now();
+  sensors.orientationMessage = "Waiting for compass readings…";
+  window.addEventListener("deviceorientationabsolute",onOrientation);
+  window.addEventListener("deviceorientation",onOrientation);
+  startAbsoluteSensor();
+}
+
+function startAbsoluteSensor() {
+  if (sensors.absoluteSensor || typeof window.AbsoluteOrientationSensor !== "function") return;
+  try {
+    const sensor = new window.AbsoluteOrientationSensor({frequency:30,referenceFrame:"device"});
+    sensors.absoluteSensor = sensor;
+    sensor.addEventListener("reading",() => {
+      if (!sensors.active || document.hidden || sensors.absoluteSensor !== sensor) return;
+      const q = sensor.quaternion;
+      if (!q || q.length !== 4 || !Array.from(q).every(Number.isFinite)) return;
+      const length = Math.hypot(...q);
+      if (length < 1e-6) return;
+      const [x,y,z,w] = Array.from(q,v => v/length);
+      // Generic Sensor quaternions transform natural device axes into
+      // magnetic ENU. Keep the matrix to avoid Euler angle singularities.
+      const matrix = [
+        [1-2*(y*y+z*z),2*(x*y-z*w),2*(x*z+y*w)],
+        [2*(x*y+z*w),1-2*(x*x+z*z),2*(y*z-x*w)],
+        [2*(x*z-y*w),2*(y*z+x*w),1-2*(x*x+y*y)]
+      ];
+      const reading = {matrix,northOffset:0,accuracy:null,source:"absolute-sensor",timestamp:Date.now()};
+      sensors.orientation = reading;
+      sensors.attitude = reading;
+      sensors.orientationMessage = "Compass aligned to geographic north; view follows the back of your phone.";
+      requestDraw();
+    });
+    sensor.addEventListener("error",() => {
+      if (sensors.absoluteSensor !== sensor) return;
+      sensor.stop();
+      sensors.absoluteSensor = null;
+      if (sensors.orientation?.source === "absolute-sensor") sensors.orientation = null;
+      if (sensors.attitude?.source === "absolute-sensor") sensors.attitude = null;
+      // Other sensor streams may work even when Generic Sensor access is
+      // unavailable. Keep their listeners and readings intact.
+      requestDraw();
+    });
+    sensor.start();
+  } catch {
+    if (sensors.absoluteSensor) {
+      sensors.absoluteSensor.stop();
+      sensors.absoluteSensor = null;
+    }
+  }
+}
+
+function startLocation() {
+  if (!sensors.active || document.hidden) return;
+  if (!navigator.geolocation) {
+    sensors.locationMessage = "This browser does not support location access.";
+    return;
+  }
+  const generation = sensors.generation;
+  sensors.locationMessage = "Finding your precise location…";
+  try {
+    sensors.watchId = navigator.geolocation.watchPosition(position => {
+      if (!sensors.active || document.hidden || generation !== sensors.generation) return;
+      const {latitude:lat,longitude:lon,accuracy,altitude,altitudeAccuracy} = position.coords;
+      if (![lat,lon,accuracy,position.timestamp].every(Number.isFinite) ||
+          Math.abs(lat)>90 || Math.abs(lon)>180 || accuracy<0) return;
+      // Never replace a newer fix with an out-of-order callback.
+      if (sensors.location && position.timestamp < sensors.location.timestamp) return;
+      sensors.location = {lat,lon,accuracy,altitude,altitudeAccuracy,timestamp:position.timestamp};
+      sensors.fieldDay = null;
+      sensors.locationMessage = accuracy > 100 ?
+        "Approximate location. Enable precise location for this browser in your phone settings." :
+        "High accuracy location tracking is active.";
+      requestDraw();
+    },error => {
+      if (!sensors.active || document.hidden || generation !== sensors.generation) return;
+      if (error.code === 1) {
+        sensors.location = null;
+        sensors.locationMessage = "Location permission denied. Allow precise location in browser or phone settings, then retry.";
+      } else if (error.code === 2) {
+        sensors.locationMessage = "Location unavailable. Check location services and try outdoors; still listening.";
+      } else {
+        sensors.locationMessage = "Location request timed out. Move outdoors; still waiting for a fix.";
+      }
+      requestDraw();
+    },{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+  } catch {
+    sensors.locationMessage = "Location access is blocked. Check this browser's permissions and retry.";
+  }
+}
+
+function detachSensors() {
+  if (sensors.watchId !== null) navigator.geolocation.clearWatch(sensors.watchId);
+  sensors.watchId = null;
+  window.removeEventListener("deviceorientationabsolute",onOrientation);
+  window.removeEventListener("deviceorientation",onOrientation);
+  if (sensors.absoluteSensor) {
+    sensors.absoluteSensor.stop();
+    sensors.absoluteSensor = null;
+  }
+  sensors.orientationListening = false;
+  sensors.attitude = null;
+  sensors.orientation = null;
+  sensors.safariOffset = null;
+}
+
+async function enableSensors() {
+  if (!window.isSecureContext || sensors.requesting) return;
+  detachSensors();
+  sensors.active = true;
+  sensors.requesting = true;
+  const generation = ++sensors.generation;
+  const Orientation = window.DeviceOrientationEvent;
+  startOrientation();
+  // Invoke permission synchronously from the button's user gesture. Do not
+  // await geolocation first: Safari would then reject the motion request.
+  const requests = [];
+  if (!Orientation && typeof window.AbsoluteOrientationSensor !== "function") {
+    sensors.orientationMessage = "This browser does not support phone orientation sensors.";
+  } else {
+    if (typeof Orientation?.requestPermission === "function") {
+      sensors.orientationMessage = "Allow motion access when prompted; listening for sensor readings.";
+      const request = (...args) => {
+        try { return Promise.resolve(Orientation.requestPermission(...args)); }
+        catch (error) { return Promise.reject(error); }
+      };
+      // Basic orientation access is independent of magnetometer access.
+      // Safari exposes compass readings through the ordinary event and uses
+      // the no-argument permission method. Newer absolute-event browsers
+      // may require a separate magnetometer request; make both calls in the
+      // same user gesture, before awaiting either result or GPS.
+      requests.push(request());
+      if ("ondeviceorientationabsolute" in window &&
+          !("webkitCompassHeading" in Orientation.prototype))
+        requests.push(request(true));
+    }
+  }
+  startLocation();
+  requestDraw();
+  try {
+    const results = await Promise.allSettled(requests);
+    if (!sensors.active || generation !== sensors.generation) return;
+    // Live data is stronger evidence than a permission method's result.
+    // A failed request can reflect unsupported compass access, page policy,
+    // or browser behavior; it does not prove the user denied all sensors.
+    if (Orientation && !sensors.attitude && !sensors.orientation) {
+      const basic = results[0];
+      if (basic?.status === "rejected") {
+        sensors.orientationMessage = "No sensor readings yet. The browser could not complete the permission request; still listening for available sensors.";
+      } else if (basic?.value === "denied") {
+        sensors.orientationMessage = "No sensor readings yet. The permission request did not enable this API; still listening for available sensors.";
+      } else {
+        sensors.orientationMessage = "Waiting for compass readings…";
+      }
+    }
+  } finally {
+    if (generation === sensors.generation) {
+      sensors.requesting = false;
+      requestDraw();
+    }
+  }
+}
+
+function stopSensors() {
+  sensors.active = false;
+  sensors.requesting = false;
+  ++sensors.generation;
+  detachSensors();
+  sensors.location = null;
+  sensors.field = null;
+  sensors.fieldDay = null;
+  sensors.locationMessage = "Location tracking stopped.";
+  sensors.orientationMessage = "Compass tracking stopped.";
+  requestDraw();
+}
+
+// Coalesce sensor bursts into one repaint per animation frame. A one-second
+// tick keeps sidereal time current and detects stale sensor readings.
+let frame = null;
+function requestDraw() {
+  if (frame !== null || document.hidden) return;
+  frame = requestAnimationFrame(() => {frame=null; draw();});
+}
+
+$("start").addEventListener("click",enableSensors);
+$("stop").addEventListener("click",stopSensors);
+for (const id of ["grid","horizon","imagery","labels"]) $(id).addEventListener("input",requestDraw);
+function setDrawer(open) {
+  $("drawer").hidden = !open;
+  $("backdrop").hidden = !open;
+  $("settings").setAttribute("aria-expanded",String(open));
+  (open ? $("closeSettings") : $("settings")).focus();
+}
+$("settings").addEventListener("click",() => setDrawer($("drawer").hidden));
+$("closeSettings").addEventListener("click",() => setDrawer(false));
+$("backdrop").addEventListener("click",() => setDrawer(false));
+document.addEventListener("keydown",event => {
+  if ($("drawer").hidden) return;
+  if (event.key === "Escape") {setDrawer(false); return;}
+  if (event.key !== "Tab") return;
+  const focusable = [...$("drawer").querySelectorAll('button:not([hidden]),input,a[href]')];
+  const first=focusable[0], last=focusable.at(-1);
+  if (event.shiftKey && document.activeElement===first) {event.preventDefault();last.focus();}
+  else if (!event.shiftKey && document.activeElement===last) {event.preventDefault();first.focus();}
+});
+$("fullscreen").hidden = !document.documentElement?.requestFullscreen;
+$("fullscreen").addEventListener("click",async () => {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch {
+    $("fullscreen").title = "Fullscreen is unavailable in this browser session";
+  }
+});
+document.addEventListener("fullscreenchange",() => {
+  const label=document.fullscreenElement ? "Exit fullscreen" : "Enter fullscreen";
+  $("fullscreen").setAttribute("aria-label",label);
+  $("fullscreen").title=label;
+  resizeCanvas();
+});
+window.addEventListener("resize",resizeCanvas);
+window.visualViewport?.addEventListener("resize",resizeCanvas);
+window.addEventListener("orientationchange",requestDraw);
+window.screen?.orientation?.addEventListener("change",requestDraw);
+document.addEventListener("visibilitychange",() => {
+  if (!sensors.active) {requestDraw(); return;}
+  if (document.hidden) {
+    // Stop geolocation and discard old orientation while in the background.
+    detachSensors();
+    if (frame !== null) cancelAnimationFrame(frame);
+    frame = null;
+    ++sensors.generation;
+    // Invalidate any pending permission continuation so it cannot restart
+    // sensors while hidden. A permission request can be retried on return.
+    sensors.requesting = false;
+  } else {
+    startLocation();
+    startOrientation();
+    requestDraw();
+  }
+});
+window.addEventListener("pagehide",stopSensors);
+setInterval(requestDraw,1000);
+resizeCanvas();
+loadPanorama();
+draw();
+
+})();
+</script>
+</body>
+</html>
