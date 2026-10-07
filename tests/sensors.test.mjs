@@ -9,7 +9,7 @@ const html = readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const catalogue = readFileSync(new URL('../assets/sky-catalog.js',import.meta.url),'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(
   /\}\)\(\);\s*$/,
-  'globalThis.app = {camera,deviceMatrix,magneticField,vectorAltAz,dot,state,observerState,sensors,draw,stars,deepSky,formatRA,formatDec,equatorial,galToEq,enuToEq,eqToENU,project,view,panoramaUV,reserveLabel,resetLabelBoxes};})();'
+  'globalThis.app = {camera,deviceMatrix,magneticField,vectorAltAz,dot,state,observerState,sensors,draw,stars,deepSky,formatRA,formatDec,equatorial,galToEq,enuToEq,eqToENU,project,view,panoramaUV,reserveLabel,resetLabelBoxes,screenAngle};})();'
 );
 
 function browser(options={}) {
@@ -51,6 +51,7 @@ function browser(options={}) {
     clearWatch(id) {cleared.push(id);}
   };
   const Orientation = function() {};
+  if (options.webkit) Orientation.prototype.webkitCompassHeading = null;
   if (options.permission) Orientation.requestPermission = absolute => {
     permissions.push(absolute);
     return options.permission(absolute);
@@ -59,12 +60,13 @@ function browser(options={}) {
     Date:Clock,document,navigator:{geolocation:options.noLocation ? undefined : geolocation},
     isSecureContext:options.secure ?? true,
     DeviceOrientationEvent:options.noOrientation ? undefined : Orientation,
-    screen:{orientation:eventTarget({angle:0})},
+    screen:{orientation:eventTarget({angle:options.screenAngle ?? 0})},
     requestAnimationFrame(fn) {const id=nextFrame++;frames.set(id,fn);return id;},
     cancelAnimationFrame(id) {frames.delete(id);},
     setInterval(fn) {context.tick=fn;},Promise,console
   });
   context.window = context;
+  if (options.legacyAngle !== undefined) context.orientation = options.legacyAngle;
   if (options.absoluteEvents) context.ondeviceorientationabsolute = null;
   if (options.absoluteSensor) context.AbsoluteOrientationSensor = options.absoluteSensor;
   vm.runInNewContext(catalogue,context);
@@ -300,15 +302,80 @@ test('iOS uses the compatible no-argument permission request and anchors compass
   b.position();
   b.orientation({type:'deviceorientation',absolute:false,alpha:123,beta:90,webkitCompassHeading:90,webkitCompassAccuracy:3});
   assert.equal(b.app.state(),null);
-  assert.match(b.text('orientationStatus'),/Tilt the phone/);
+  assert.match(b.text('orientationStatus'),/Hold the iPhone flat/);
+  assert.match(b.text('setupHint'),/screen facing up/);
+  assert.match(b.text('setupOrientation'),/Hold the iPhone flat/);
   b.orientation({type:'deviceorientation',absolute:false,alpha:123,beta:0,webkitCompassHeading:90,webkitCompassAccuracy:3});
   b.orientation({type:'deviceorientation',absolute:false,alpha:123,beta:90,webkitCompassHeading:90,webkitCompassAccuracy:3});
   const state = b.app.state();
   close(b.app.vectorAltAz(state.camera.forward)[0],90+b.app.sensors.field.declination);
   assert.match(b.text('compassAccuracy'),/±3.0°/);
   b.orientation({type:'deviceorientation',absolute:false,webkitCompassHeading:0,webkitCompassAccuracy:-1});
+  assert.ok(b.app.state());
+  assert.match(b.text('orientationStatus'),/recalibrating/);
+});
+
+test('iPhone requests motion access inside the tap before starting GPS',async () => {
+  const b=browser({webkit:true,absoluteEvents:true,permission:absolute => {
+    assert.equal(b.watches.size,0);
+    assert.equal(absolute,undefined);
+    return Promise.resolve('granted');
+  }});
+  await b.start();
+  assert.deepEqual(b.permissions,[undefined]);
+  assert.equal(b.watches.size,1);
+  assert.match(b.text('setupHint'),/Start with your iPhone flat/);
+});
+
+test('iPhone calibration survives upright magnetic glitches and gyro heading changes',async () => {
+  const b=browser({webkit:true,legacyAngle:0});
+  await b.start();b.position();
+  b.orientation({type:'deviceorientation',absolute:false,alpha:123,beta:0,webkitCompassHeading:90,webkitCompassAccuracy:3});
+  const offset=b.app.sensors.safariOffset;
+  // A top-edge magnetic heading is ill-conditioned when pointing at the sky.
+  b.orientation({type:'deviceorientation',absolute:false,alpha:123,beta:120,webkitCompassHeading:0,webkitCompassAccuracy:3});
+  close(b.app.sensors.safariOffset,offset);
+  close(b.app.vectorAltAz(b.app.state().camera.forward)[0],90+b.app.sensors.field.declination);
+  close(b.app.vectorAltAz(b.app.state().camera.forward)[1],30);
+  b.orientation({type:'deviceorientation',absolute:false,alpha:93,beta:120,webkitCompassHeading:-1,webkitCompassAccuracy:-1});
+  assert.ok(b.app.state());
+  close(b.app.vectorAltAz(b.app.state().camera.forward)[0],120+b.app.sensors.field.declination);
+  assert.match(b.text('sensorStatus'),/Compass recalibrating/);
+  assert.notEqual(b.text('ra'),'—');
+  // A null magnetic reading also keeps the already aligned gyro live.
+  b.orientation({type:'deviceorientation',absolute:false,alpha:63,beta:100,webkitCompassHeading:null,webkitCompassAccuracy:-1});
+  assert.ok(b.app.state());
+  close(b.app.vectorAltAz(b.app.state().camera.forward)[0],150+b.app.sensors.field.declination);
+  b.stop();assert.equal(b.app.sensors.safariOffset,null);
+});
+
+test('an uncalibrated iPhone exposes setup guidance without inventing north',async () => {
+  const b=browser({webkit:true});await b.start();b.position();
+  b.orientation({type:'deviceorientation',absolute:false,beta:90,webkitCompassHeading:0,webkitCompassAccuracy:-1});
   assert.equal(b.app.state(),null);
-  assert.match(b.text('orientationStatus'),/calibration/);
+  assert.equal(b.text('ra'),'—');
+  assert.equal(b.elements.get('setupDiagnostics').hidden,false);
+  assert.match(b.text('setupTitle'),/Align/);
+  assert.match(b.text('setupLocation'),/accuracy location/);
+  assert.match(b.text('setupOrientation'),/calibration/);
+  assert.equal(b.elements.get('skyHud').hidden,true);
+});
+
+test('iPhone screen rotation follows its interface while Android uses Screen Orientation',() => {
+  const ios=browser({webkit:true,legacyAngle:0,screenAngle:90});
+  assert.equal(ios.app.screenAngle(),0);
+  ios.context.orientation=-90; assert.equal(ios.app.screenAngle(),-90);
+  const android=browser({legacyAngle:0,screenAngle:90});
+  assert.equal(android.app.screenAngle(),90);
+});
+
+test('browsers without fullscreen keep a button that explains Home Screen app mode',() => {
+  const b=browser();
+  assert.equal(b.elements.get('fullscreen').hidden,false);
+  assert.equal(b.elements.get('homeScreenHelp').hidden,false);
+  b.elements.get('fullscreen').emit('click');
+  assert.equal(b.elements.get('drawer').hidden,false);
+  assert.equal(b.elements.get('backdrop').hidden,false);
 });
 
 test('null/invalid angle events cannot become a compass reading',async () => {
@@ -464,7 +531,7 @@ test('sensor data arriving during a permission prompt outranks its later result'
 test('an unavailable parallel absolute stream cannot erase a working Safari compass',async () => {
   const b = browser();
   await b.start();b.position();
-  b.orientation({type:'deviceorientation',absolute:false,beta:60,webkitCompassHeading:0,webkitCompassAccuracy:3});
+  b.orientation({type:'deviceorientation',absolute:false,beta:0,webkitCompassHeading:0,webkitCompassAccuracy:3});
   const reading=b.app.sensors.orientation;
   b.orientation({alpha:null,beta:null,gamma:null});
   assert.equal(b.app.sensors.orientation,reading);

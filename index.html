@@ -4,12 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#04080e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Galactic Compass">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
 <title>Galactic Compass</title>
 <style>
 :root { color-scheme:dark; --bg:#04080e; --text:#e6edf6; --muted:#9aaabb; --line:#ffffff1c; --gal:#8acddd; --radial:#e9c58a; --tangential:#a6d7ac; --vertical:#c7b1ed; }
 * { box-sizing:border-box; }
 body { margin:0; background:var(--bg); color:var(--text); font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; overflow:hidden; }
-main { position:relative; width:100%; height:100vh; height:100dvh; overflow:hidden; }
+main { position:relative; width:100%; height:100vh; height:100dvh; height:var(--viewport-height,100vh); overflow:hidden; }
 canvas { position:absolute; inset:0; display:block; width:100%; height:100%; }
 .vignette { position:absolute; inset:0; pointer-events:none; background:linear-gradient(#04080ec9,transparent 23%,transparent 70%,#04080ed9),radial-gradient(ellipse at center,transparent 40%,#04080e55); }
 header { position:absolute; top:0; left:0; right:0; padding:calc(19px + env(safe-area-inset-top)) 24px 18px; display:flex; justify-content:space-between; align-items:center; gap:16px; pointer-events:none; }
@@ -18,20 +23,23 @@ h1 { font:600 14px/1.2 ui-sans-serif,system-ui,sans-serif; letter-spacing:.19em;
 .brand svg { width:29px; height:29px; color:var(--gal); }
 .eyebrow { font-size:9px; letter-spacing:.2em; color:var(--muted); margin-top:6px; }
 .actions { display:flex; gap:8px; pointer-events:auto; }
-button { color:var(--text); border:1px solid #ffffff25; border-radius:12px; background:#09111db3; backdrop-filter:blur(18px); font:inherit; cursor:pointer; min-height:44px; padding:10px 14px; }
+button { color:var(--text); border:1px solid #ffffff25; border-radius:12px; background:#09111db3; -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px); font:inherit; cursor:pointer; min-height:44px; padding:10px 14px; }
 button:hover { background:#1b2b3ed9; }
 button:disabled { opacity:.55; cursor:default; }
 button:focus-visible,a:focus-visible,input:focus-visible { outline:2px solid var(--gal); outline-offset:3px; }
 .icon-button { width:44px; padding:10px; display:grid; place-items:center; }
 .icon-button svg { width:20px; height:20px; }
 [hidden] { display:none !important; }
-.glass { border:1px solid var(--line); background:linear-gradient(125deg,#0a1420d9,#081019bd); backdrop-filter:blur(22px); box-shadow:0 12px 40px #0003; }
-.onboarding { position:absolute; width:min(350px,calc(100% - 48px)); left:50%; top:50%; transform:translate(-50%,-50%); padding:28px; text-align:center; border-radius:22px; }
+.glass { border:1px solid var(--line); background:linear-gradient(125deg,#0a1420d9,#081019bd); -webkit-backdrop-filter:blur(22px); backdrop-filter:blur(22px); box-shadow:0 12px 40px #0003; }
+.onboarding { position:absolute; width:min(350px,calc(100% - 48px)); max-height:calc(100% - 150px); overflow-y:auto; left:50%; top:50%; transform:translate(-50%,-50%); padding:28px; text-align:center; border-radius:22px; }
 .onboarding svg { width:42px; height:42px; color:var(--gal); margin-bottom:16px; }
 .onboarding h2 { font:400 27px/1.2 ui-sans-serif,system-ui,sans-serif; letter-spacing:-.04em; margin:0 0 12px; }
 .onboarding p { color:var(--muted); font-size:12px; margin:0 0 23px; }
 .onboarding button { background:#bce8ec; color:#08131a; border:0; width:100%; font-weight:600; }
 .onboarding .privacy { font-size:10px; margin:14px 0 0; color:#8295a7; }
+.setup-diagnostics { text-align:left; border-top:1px solid var(--line); padding-top:12px; margin-top:16px; }
+.setup-diagnostics p { font-size:10px; margin:0 0 8px; }
+.setup-diagnostics p:last-child { margin-bottom:0; }
 .sky-caption { position:absolute; top:calc(87px + env(safe-area-inset-top)); left:24px; font-size:10px; color:var(--muted); display:flex; align-items:center; gap:7px; }
 .status-dot { width:5px; height:5px; background:#7a8c9e; border-radius:50%; }
 .sky-caption[data-ready=true] .status-dot { background:var(--tangential); box-shadow:0 0 9px #a6d7ac66; }
@@ -103,12 +111,15 @@ input { accent-color:var(--gal); }
   <p id="sensorStatus" role="status" aria-live="polite">Enable location and compass access to begin.</p>
   <div id="onboarding" class="onboarding glass">
     <svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="m24 4 5 15 15 5-15 5-5 15-5-15-15-5 15-5Z" stroke="currentColor"/><circle cx="24" cy="24" r="3" fill="currentColor"/></svg>
-    <h2>Find your place<br>in the Galaxy.</h2>
-    <p>Point the back of your phone at the sky.<br>Move it to explore stars, nebulae<br>and the shape of our Milky Way.</p>
+    <h2 id="setupTitle">Find your place<br>in the Galaxy.</h2>
+    <p id="setupHint">Point the back of your phone at the sky. Move it to explore stars, nebulae and the shape of our Milky Way.</p>
     <button id="start" type="button">Enable sensors</button>
     <p class="privacy">Your location stays on this device.</p>
+    <div id="setupDiagnostics" class="setup-diagnostics" hidden>
+      <p id="setupLocation"></p><p id="setupOrientation"></p>
+    </div>
   </div>
-  <div class="hud">
+  <div id="skyHud" class="hud" hidden>
     <div class="coordinates glass">
       <div class="coordinate-title">CENTRE OF VIEW · EQUATORIAL J2000</div>
       <div class="equatorial"><div><label for="ra">RIGHT ASCENSION</label><output id="ra">—</output></div><div><label for="dec">DECLINATION</label><output id="dec">—</output></div></div>
@@ -119,6 +130,9 @@ input { accent-color:var(--gal); }
   <button id="backdrop" class="backdrop" type="button" aria-label="Close settings" hidden></button>
   <aside id="drawer" class="drawer glass" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" hidden>
     <div class="drawer-heading"><h2 id="drawerTitle">SKY &amp; SENSORS</h2><button id="closeSettings" class="icon-button" aria-label="Close settings" type="button">✕</button></div>
+    <section id="homeScreenHelp" hidden><h3>IPHONE APP VIEW</h3>
+      <p class="note">For a view without Safari's browser controls, choose <b>Share → Add to Home Screen</b>, then open Galactic Compass from that icon. Allow motion and location access in the app when prompted.</p>
+    </section>
     <section>
       <h3>SKY LAYERS</h3>
       <label class="toggle"><input id="imagery" type="checkbox" checked>Milky Way panorama</label>
@@ -468,6 +482,7 @@ const sensors = {
   // Safari's Euler yaw has an arbitrary origin. Anchor it to its compass
   // while the portrait top edge has a usable horizontal projection.
   safariOffset: null,
+  needsCompassAlignment: false,
   field: null,
   fieldDay: null,
   orientationStarted: 0,
@@ -499,9 +514,17 @@ function rotateHeading(v,degrees) {
 }
 
 function screenAngle() {
+  // Safari's legacy value follows the iPhone's displayed interface. Prefer
+  // it over a Screen Orientation value based on a different natural frame.
+  if (hasWebKitCompass() && Number.isFinite(window.orientation))
+    return window.orientation;
   if (Number.isFinite(window.screen?.orientation?.angle))
     return window.screen.orientation.angle;
   return Number.isFinite(window.orientation) ? window.orientation : 0;
+}
+
+function hasWebKitCompass() {
+  return "webkitCompassHeading" in (window.DeviceOrientationEvent?.prototype ?? {});
 }
 
 function camera(reading,declination,angle=screenAngle()) {
@@ -544,6 +567,8 @@ function state() {
 const view = {width:900,height:900,dpr:1};
 const focalLength = () => Math.min(view.width,view.height)/2/Math.tan(55*R);
 function resizeCanvas() {
+  const viewportHeight=window.visualViewport?.height || window.innerHeight;
+  if (viewportHeight) $("instrument").style.setProperty("--viewport-height",`${viewportHeight}px`);
   view.width = C.clientWidth || window.innerWidth || 900;
   view.height = C.clientHeight || window.innerHeight || 900;
   view.dpr = Math.min(window.devicePixelRatio || 1,2);
@@ -947,14 +972,26 @@ function updateSensorUI(s) {
     setText("sceneState","LIVE SKY · J2000");
   }
   $("onboarding").hidden = Boolean(s);
+  $("skyHud").hidden = !s;
+  $("setupDiagnostics").hidden = !sensors.active;
+  setText("setupTitle",sensors.needsCompassAlignment ? "Align your compass." : "Find your place in the Galaxy.");
+  setText("setupHint",sensors.needsCompassAlignment ?
+    "Hold your iPhone flat, screen facing up, for a moment. Once aligned, point the back of the phone at the sky." :
+    hasWebKitCompass() ?
+      "Start with your iPhone flat, screen facing up. Allow Motion & Orientation, then point the back of the phone at the sky." :
+      "Point the back of your phone at the sky. Move it to explore stars, nebulae and the shape of our Milky Way.");
+  setText("setupLocation",$("locationStatus").textContent);
+  setText("setupOrientation",orientationMessage);
 
   let message = "Enable location and compass access to begin.";
   if (!window.isSecureContext) message = "Open this page over HTTPS to use location and motion sensors.";
   else if (sensors.active) {
     if (document.hidden) message = "Sensors paused while the page is hidden.";
     else if (s && !freshOrientation) message = "Holding the last attitude; move the phone to refresh.";
+    else if (s && reading.compassCalibrating) message = "Compass recalibrating; using the last alignment with live tilt and roll.";
     else if (s) message = location.accuracy > 100 ?
       "Tracking live. Location is approximate; enable precise location in your phone settings." : "Tracking live location and attitude.";
+    else if (sensors.needsCompassAlignment) message = "Hold the iPhone flat briefly to align its compass.";
     else if (freshAttitude && !reading) message = "Tilt and roll are live; waiting for a compass heading.";
     else if (!freshLocation && !freshOrientation) message = "Waiting for location and compass.";
     else if (!freshLocation) message = "Waiting for a location fix.";
@@ -974,7 +1011,8 @@ function onOrientation(event) {
   // because a separate permission request was unsupported or unsuccessful.
   if (!sensors.active || !sensors.orientationListening || document.hidden) return;
   const {alpha,beta,gamma} = event;
-  const source = Number.isFinite(event.webkitCompassHeading) ? "webkit" : event.type;
+  const isSafariCompass = "webkitCompassHeading" in event;
+  const source = isSafariCompass ? "webkit" : event.type;
   if ([beta,gamma].every(Number.isFinite)) {
     sensors.attitude = {alpha:Number.isFinite(alpha) ? alpha : null,beta,gamma,source,timestamp:Date.now()};
     requestDraw();
@@ -992,24 +1030,32 @@ function onOrientation(event) {
   }
   let northOffset = 0;
   let accuracy = null;
-  const isSafariCompass = Number.isFinite(event.webkitCompassHeading);
+  let compassCalibrating = false;
   if (isSafariCompass) {
     accuracy = event.webkitCompassAccuracy;
-    if (event.webkitCompassHeading < 0 || event.webkitCompassHeading >= 360 ||
-        (Number.isFinite(accuracy) && accuracy < 0)) {
-      sensors.orientation = null;
-      sensors.orientationMessage = "Compass needs calibration. Move the phone in a figure eight away from metal.";
-      requestDraw();
-      return;
-    }
-    const top = mv(deviceMatrix(alpha,beta,gamma),[0,1,0]);
-    if (Math.hypot(top[0],top[1]) > .2)
+    const validCompass = Number.isFinite(event.webkitCompassHeading) &&
+      event.webkitCompassHeading >= 0 && event.webkitCompassHeading < 360 &&
+      !(Number.isFinite(accuracy) && accuracy < 0);
+    const matrix=deviceMatrix(alpha,beta,gamma);
+    const top=mv(matrix,[0,1,0]);
+    // Core Location headings become unstable with the portrait top edge
+    // near vertical. Establish/update the gyro's north offset while flat;
+    // carry that offset through upright, rolled and skyward poses.
+    if (validCompass && Math.abs(matrix[2][2]) > .65 && Math.hypot(top[0],top[1]) > .2)
       sensors.safariOffset = wrap(event.webkitCompassHeading-vectorAltAz(top)[0]);
     if (sensors.safariOffset === null) {
-      sensors.orientationMessage = "Tilt the phone toward horizontal briefly to align its compass, then point at the sky.";
+      sensors.needsCompassAlignment = true;
+      sensors.orientationMessage = validCompass ?
+        "Hold the iPhone flat, screen facing up, briefly to align its compass, then point at the sky." :
+        "Compass needs calibration. Hold the phone flat and move it in a figure eight away from metal.";
       requestDraw();
       return;
     }
+    sensors.needsCompassAlignment = false;
+    // A temporary invalid magnetic heading does not discard a calibrated
+    // gyro pose. This also handles null compass values from Safari.
+    compassCalibrating = !validCompass;
+    if (compassCalibrating) accuracy = null;
     northOffset = sensors.safariOffset;
   } else if (!event.absolute) {
     // Relative gyro yaw has no north reference. Never label it as sky data.
@@ -1019,8 +1065,10 @@ function onOrientation(event) {
     }
     return;
   }
-  sensors.orientation = {alpha,beta,gamma,northOffset,accuracy,source,timestamp:Date.now()};
-  sensors.orientationMessage = Number.isFinite(accuracy) && accuracy > 15 ?
+  sensors.orientation = {alpha,beta,gamma,northOffset,accuracy,source,compassCalibrating,timestamp:Date.now()};
+  sensors.orientationMessage = compassCalibrating ?
+    "Compass is recalibrating. Using the last north alignment with live gyro readings; hold the phone flat to refresh it." :
+    Number.isFinite(accuracy) && accuracy > 15 ?
     "Compass accuracy is low. Move the phone in a figure eight away from metal." :
     "Compass aligned to geographic north; view follows the back of your phone.";
   requestDraw();
@@ -1132,6 +1180,7 @@ function detachSensors() {
   sensors.attitude = null;
   sensors.orientation = null;
   sensors.safariOffset = null;
+  sensors.needsCompassAlignment = false;
 }
 
 async function enableSensors() {
@@ -1229,25 +1278,44 @@ document.addEventListener("keydown",event => {
   if (event.key === "Escape") {setDrawer(false); return;}
   if (event.key !== "Tab") return;
   const focusable = [...$("drawer").querySelectorAll('button:not([hidden]),input,a[href]')];
-  const first=focusable[0], last=focusable.at(-1);
+  const first=focusable[0], last=focusable[focusable.length-1];
   if (event.shiftKey && document.activeElement===first) {event.preventDefault();last.focus();}
   else if (!event.shiftKey && document.activeElement===last) {event.preventDefault();first.focus();}
 });
-$("fullscreen").hidden = !document.documentElement?.requestFullscreen;
+function fullscreenAvailable() {
+  return Boolean(
+    (document.fullscreenEnabled !== false && document.documentElement?.requestFullscreen) ||
+    (document.webkitFullscreenEnabled !== false && document.documentElement?.webkitRequestFullscreen));
+}
+function fullscreenElement() {return document.fullscreenElement || document.webkitFullscreenElement;}
+function updateFullscreenControl() {
+  const standalone=Boolean(navigator.standalone || window.matchMedia?.("(display-mode: standalone)").matches);
+  $("fullscreen").hidden = standalone;
+  $("homeScreenHelp").hidden = standalone || fullscreenAvailable();
+  const label=fullscreenElement() ? "Exit fullscreen" : fullscreenAvailable() ? "Enter fullscreen" : "Show iPhone app-view instructions";
+  $("fullscreen").setAttribute("aria-label",label);
+  $("fullscreen").title=label;
+}
 $("fullscreen").addEventListener("click",async () => {
+  if (!fullscreenAvailable()) {setDrawer(true);return;}
   try {
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await document.documentElement.requestFullscreen();
+    if (fullscreenElement()) {
+      const exit=document.exitFullscreen || document.webkitExitFullscreen;
+      await exit.call(document);
+    } else {
+      const enter=document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
+      await enter.call(document.documentElement);
+    }
   } catch {
     $("fullscreen").title = "Fullscreen is unavailable in this browser session";
   }
 });
-document.addEventListener("fullscreenchange",() => {
-  const label=document.fullscreenElement ? "Exit fullscreen" : "Enter fullscreen";
-  $("fullscreen").setAttribute("aria-label",label);
-  $("fullscreen").title=label;
+function onFullscreenChange() {
+  updateFullscreenControl();
   resizeCanvas();
-});
+}
+document.addEventListener("fullscreenchange",onFullscreenChange);
+document.addEventListener("webkitfullscreenchange",onFullscreenChange);
 window.addEventListener("resize",resizeCanvas);
 window.visualViewport?.addEventListener("resize",resizeCanvas);
 window.addEventListener("orientationchange",requestDraw);
@@ -1271,6 +1339,7 @@ document.addEventListener("visibilitychange",() => {
 });
 window.addEventListener("pagehide",stopSensors);
 setInterval(requestDraw,1000);
+updateFullscreenControl();
 resizeCanvas();
 loadPanorama();
 draw();

@@ -3,11 +3,20 @@
 Open the page on a phone, tap **Enable sensors**, and allow precise location
 and motion/compass access. Point the back of the phone toward the sky. The
 view uses the rear camera direction, with tilt, roll, and screen rotation.
-On iOS, briefly tilt the phone toward horizontal to establish the compass
-reference before pointing at the sky.
+On iPhone, start with the phone flat, screen facing up. Tap **Enable sensors**
+and allow **Motion & Orientation** when prompted. Once the compass aligns,
+point the back of the phone at the sky. If you start with it upright, the
+welcome card shows the calibration step along with live location and motion
+status. Brief invalid magnetic readings retain the calibrated north reference
+while the gyro keeps the view moving. After returning from the background,
+hold it flat briefly to re-establish the reference.
 
 The sky fills the viewport in portrait or landscape. Tap the four-corner
 icon at the top right to enter browser fullscreen; tap again to leave it.
+On iPhone, where element fullscreen is unavailable, that button explains
+**Share → Add to Home Screen**. Open the resulting icon for the app view
+without browser controls, and allow location and motion access there.
+The relative web-app manifest and Apple touch icon also work on GitHub Pages.
 The adjacent settings button opens the sensor details and sky layers.
 The coordinate HUD shows the centre ray's RA (hours, minutes, seconds),
 Dec (degrees, arcminutes), and Galactic longitude/latitude. These use an
@@ -49,8 +58,12 @@ The page listens to ordinary and absolute orientation events and, when
 available, Chromium's `AbsoluteOrientationSensor` quaternion API. Sensor
 readings are accepted independently of a permission method's return value.
 Tilt and roll remain visible when only relative orientation is available;
-the Galactic sky requires a north reference. Basic motion access and optional
-compass access are requested separately on browsers that support both.
+the Galactic sky requires a north reference. iPhone motion permission is
+requested synchronously during the button tap, before GPS, using the
+compatible no-argument API. Basic motion access and optional compass access
+are requested separately on browsers that support both. Safari uses its
+legacy interface orientation to compensate screen rotation; Android continues
+to use Screen Orientation and its absolute events/quaternion sensor.
 
 Magnetic headings are corrected to geographic north using the embedded,
 public-domain NOAA/BGS WMM2025 coefficients. The model is valid through 2029
@@ -62,7 +75,8 @@ older than two minutes suspend the sky projection.
 
 The `main` branch contains the application, local HTTPS server, and tests.
 The `deployment` branch contains the static site at its root: `index.html`,
-`assets/`, and `.nojekyll`. It requires no build step or Python server.
+`assets/`, `manifest.webmanifest`, and `.nojekyll`. It requires no build step
+or Python server.
 
 After pushing the branches yourself, open the repository's **Settings → Pages**,
 select **Deploy from a branch**, choose **deployment** and **/(root)**, and save.
@@ -72,8 +86,9 @@ The relative asset paths support this project subdirectory, and GitHub's HTTPS
 hosting supplies the secure context required for phone sensors.
 
 The deployment branch is a snapshot. For future releases, copy the updated
-`index.html` and `assets/` from `main` into `deployment`, retain `.nojekyll`,
-and commit the changes there before pushing that branch.
+`index.html`, `manifest.webmanifest`, and `assets/` from `main` into
+`deployment`, retain `.nojekyll`, and commit the changes there before pushing
+that branch.
 
 ## Local HTTPS server
 
@@ -109,6 +124,8 @@ screen rotation, permission failures with working sensor streams, independent
 tilt/roll readings, the quaternion API, lifecycle recovery, and NOAA's twelve
 WMM2025 reference vectors. Hardware sensor accuracy still needs verification
 on the phone being used.
+The iPhone checks cover visible calibration, permission timing, cached gyro
+alignment during magnetic glitches, interface rotation, and app-view help.
 The astronomy checks also cover catalogue coordinates, RA/Dec rounding,
 equatorial/local transforms, rectangular projection, panorama orientation,
 label collisions, and pointing the centre ray at Sirius.

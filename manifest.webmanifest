@@ -1,0 +1,15 @@
+{
+  "id": "./",
+  "name": "Galactic Compass",
+  "short_name": "Galactic Compass",
+  "description": "Explore the Milky Way using your location and phone orientation.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#04080e",
+  "theme_color": "#04080e",
+  "icons": [
+    {"src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}
