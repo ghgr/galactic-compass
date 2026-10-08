@@ -9,7 +9,7 @@ const html = readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const catalogue = readFileSync(new URL('../assets/sky-catalog.js',import.meta.url),'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(
   /\}\)\(\);\s*$/,
-  'globalThis.app = {camera,deviceMatrix,magneticField,vectorAltAz,dot,state,observerState,sensors,draw,stars,deepSky,formatRA,formatDec,equatorial,galToEq,enuToEq,eqToENU,project,view,panoramaUV,reserveLabel,resetLabelBoxes,screenAngle};})();'
+  'globalThis.app = {camera,deviceMatrix,magneticField,vectorAltAz,dot,state,observerState,sensors,draw,stars,deepSky,formatRA,formatDec,equatorial,galToEq,enuToEq,eqToENU,project,view,panoramaUV,reserveLabel,resetLabelBoxes,screenAngle,earthForward,marker,forwardDir};})();'
 );
 
 function browser(options={}) {
@@ -34,7 +34,12 @@ function browser(options={}) {
     textContent:'',checked:true,hidden:false,disabled:false,dataset:{},width:900,height:900,
     setAttribute(key,value) {this[key]=value;},focus() {}
   })]));
-  const context2d = new Proxy({createRadialGradient:() => ({addColorStop(){}}),measureText:text => ({width:text.length*7})}, {
+  const paint = [];
+  const context2d = new Proxy({
+    createRadialGradient:() => ({addColorStop(){}}),measureText:text => ({width:text.length*7}),
+    fillText(text,x,y) {paint.push({text,x,y,color:this.fillStyle});},
+    translate(x,y) {paint.push({translate:[x,y]});}
+  }, {
     get:(target,key) => key in target ? target[key] : () => {},
     set:(target,key,value) => {target[key]=value;return true;}
   });
@@ -73,7 +78,7 @@ function browser(options={}) {
   vm.runInNewContext(script,context);
   const flush = () => {const pending=[...frames.values()];frames.clear();for (const fn of pending) fn();};
   return {
-    app:context.app,context,elements,watches,cleared,permissions,
+    app:context.app,context,elements,watches,cleared,permissions,paint,
     flush,
     text:id => elements.get(id).textContent,
     async start() {elements.get('start').emit('click');await Promise.resolve();await Promise.resolve();flush();},
@@ -97,6 +102,10 @@ function close(actual,expected,tolerance=1e-8) {
   assert.ok(Math.abs(actual-expected)<tolerance,`${actual} should be ${expected}`);
 }
 function vector(actual,expected) {actual.forEach((v,i) => close(v,expected[i]));}
+function angle(a,b) {
+  const cosine=a.reduce((sum,v,i) => sum+v*b[i],0)/(Math.hypot(...a)*Math.hypot(...b));
+  return Math.acos(Math.max(-1,Math.min(1,cosine)))*180/Math.PI;
+}
 
 test('startup has no made-up observer or attitude, and mock controls are removed',() => {
   const b = browser();
@@ -105,6 +114,7 @@ test('startup has no made-up observer or attitude, and mock controls are removed
   assert.equal(b.context.count('deviceorientationabsolute'),0);
   assert.equal(b.text('site'),'—');
   assert.equal(b.text('lb'),'—');
+  assert.equal(b.paint.some(call => call.text==='FORWARD'),false);
   assert.doesNotMatch(html,/type="range"|data-target|MOCK OBSERVER|simulated sensor/i);
 });
 
@@ -141,6 +151,80 @@ test('equatorial and local sky transformations agree at poles and across RA zero
   }
   const [ra,dec]=app.equatorial(app.galToEq(0,0));
   close(ra,266.405,.001); close(dec,-28.936,.001);
+});
+
+// JPL Horizons DE441, Earth (399) relative to Sun (500@10), geometric
+// velocity in ICRF, km/s, at 00:00 UT. Retrieved 2026-10-08 using:
+// https://ssd.jpl.nasa.gov/api/horizons.api
+// EPHEM_TYPE=VECTORS, REF_PLANE=FRAME, VEC_CORR=NONE, TIME_TYPE=UT.
+// These independent fixtures cover both apsides and all four seasons.
+const earthVelocityCases = [
+  ['2026-01-03',[-29.58154811977036,-5.899615381603174,-2.556670890519425]],
+  ['2026-03-20',[-.9874088014507925,-27.44085129157506,-11.89616348373693]],
+  ['2026-06-21',[29.30659720424456,-.4267435793140931,-.1840004101102856]],
+  ['2026-07-04',[28.68074460480251,5.429773256317707,2.352347169149734]],
+  ['2026-09-23',[-.2962286172986838,27.22044201986546,11.79837680384286]],
+  ['2026-10-08',[-7.868733047629794,26.38471279520622,11.43852223733789]],
+  ['2026-12-21',[-30.25610376855702,.4890070440917297,.2120961115250972]]
+];
+test('orbital forward agrees with independent heliocentric Earth velocities',() => {
+  const {app}=browser();
+  for (const [date,velocity] of earthVelocityCases) {
+    const forward=app.earthForward(new Date(`${date}T00:00:00Z`));
+    close(Math.hypot(...forward),1);
+    assert.ok(angle(forward,velocity)<.05,`${date}: forward must match Horizons within 0.05°`);
+  }
+});
+
+test('forward marker stays labelled in portrait and landscape, including behind us',() => {
+  const b=browser(), {app}=b;
+  const s={camera:{right:[1,0,0],up:[0,1,0],forward:[0,0,1]}};
+  for (const [width,height] of [[390,844],[844,390]]) {
+    Object.assign(app.view,{width,height});
+    // Centred, near the right edge, off-screen, behind, exactly opposite.
+    for (const v of [[0,0,1],[.7,0,.714142842854285],[1,0,0],[.6,0,-.8],[0,0,-1]]) {
+      b.paint.length=0; app.resetLabelBoxes();
+      app.marker(v,app.forwardDir,s,true);
+      const label=b.paint.find(call => call.text==='FORWARD');
+      assert.ok(label,`${width}×${height}, ${v}: forward label must be visible`);
+      assert.equal(label.color,app.forwardDir.color);
+      assert.ok(label.x>=8 && label.x+7*label.text.length<=width-8);
+      assert.ok(label.y>=(width<=600 ? 145 : 130) && label.y<=height-(width<=600 ? 190 : 155));
+      if (v[2]<=0) {
+        const edge=b.paint.find(call => call.translate)?.translate;
+        assert.ok(edge,'off-screen forward must have an arrow');
+        if (v[0]>0) assert.ok(edge[0]>width/2,'turn right even when the ray is behind us');
+      }
+    }
+  }
+});
+
+test('pointing at orbital forward aligns its marker and updates it with live time',async () => {
+  const b=browser(); await b.start(); b.position();
+  const {app}=b;
+  b.elements.get('labels').checked=false;
+  const pointForward = () => {
+    const observer=app.observerState(), forward=app.earthForward(observer.date);
+    const [az,alt]=app.vectorAltAz(app.eqToENU(forward,observer.lat,observer.lst));
+    b.paint.length=0;
+    b.orientation({alpha:((app.sensors.field.declination-az)%360+360)%360,beta:90+alt,gamma:0});
+    const [ra,dec]=app.equatorial(forward);
+    assert.equal(b.text('ra'),app.formatRA(ra));
+    assert.equal(b.text('dec'),app.formatDec(dec));
+    const label=b.paint.find(call => call.text==='FORWARD');
+    assert.ok(label,'forward is drawn even with star labels disabled');
+    close(label.x,app.view.width/2+38); close(label.y,app.view.height/2);
+    assert.match(b.text('nearest'),/INWARD|OUTWARD|PROGRADE|RETROGRADE|GAL POLE/);
+    return forward;
+  };
+  const before=pointForward();
+  b.paint.length=0; b.advance(86400000);
+  assert.equal(b.paint.some(call => call.text==='FORWARD'),false,'stale location suspends the pointer');
+  b.position();
+  const after=pointForward();
+  assert.ok(angle(before,after)>.9 && angle(before,after)<1.1,'forward changes with the orbit');
+  b.paint.length=0; b.stop();
+  assert.equal(b.paint.some(call => call.text==='FORWARD'),false);
 });
 
 test('rectangular projection keeps the reticle centred in portrait and landscape',() => {

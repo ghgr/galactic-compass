@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="assets/icon-180.png">
 <title>Galactic Compass</title>
 <style>
-:root { color-scheme:dark; --bg:#04080e; --text:#e6edf6; --muted:#9aaabb; --line:#ffffff1c; --gal:#8acddd; --radial:#e9c58a; --tangential:#a6d7ac; --vertical:#c7b1ed; }
+:root { color-scheme:dark; --bg:#04080e; --text:#e6edf6; --muted:#9aaabb; --line:#ffffff1c; --gal:#8acddd; --radial:#e9c58a; --tangential:#a6d7ac; --vertical:#c7b1ed; --forward:#f4a58a; }
 * { box-sizing:border-box; }
 body { margin:0; background:var(--bg); color:var(--text); font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; overflow:hidden; }
 main { position:relative; width:100%; height:100vh; height:100dvh; height:var(--viewport-height,100vh); overflow:hidden; }
@@ -73,6 +73,7 @@ section h3 { color:var(--muted); font-size:10px; letter-spacing:.13em; margin:0 
 input { accent-color:var(--gal); }
 .legend { display:flex; justify-content:space-between; font-size:10px; margin:13px 0; }
 .legend span:nth-child(1) { color:var(--radial); } .legend span:nth-child(2) { color:var(--tangential); } .legend span:nth-child(3) { color:var(--vertical); }
+.forward-key { color:var(--forward); }
 @media (max-width:600px) {
   header { padding-left:18px; padding-right:18px; }
   h1 { font-size:12px; letter-spacing:.13em; } .brand { gap:9px; } .brand svg { width:24px; }
@@ -95,7 +96,7 @@ input { accent-color:var(--gal); }
 </head>
 <body>
 <main id="instrument">
-  <canvas id="canvas" width="900" height="900" aria-label="Live sky with stars, nebulae and Galactic directions behind your phone"></canvas>
+  <canvas id="canvas" width="900" height="900" aria-label="Live sky with stars, nebulae, Galactic directions and Earth's orbital forward direction behind your phone"></canvas>
   <div class="vignette"></div>
   <header>
     <div class="brand">
@@ -141,6 +142,7 @@ input { accent-color:var(--gal); }
       <label class="toggle"><input id="horizon" type="checkbox" checked>Local horizon</label>
       <div class="legend"><span>● IN / OUT</span><span>● ROTATION</span><span>● POLES</span></div>
       <p class="note">The thin cyan line traces the Galactic plane. Arrow tips guide you toward axes outside the view.</p>
+      <p class="note"><span class="forward-key">● FORWARD</span> marks the direction Earth is travelling around the Sun right now. Its edge arrow guides you when that direction is outside the view.</p>
       <p class="note">This is an enhanced sky atlas. Nebulae are usually much fainter to the eye. The panorama is a historical photograph; planets are not tracked. The atlas also shows directions below your horizon.</p>
     </section>
     <section><h3>OBSERVER</h3><div class="readout">
@@ -152,6 +154,7 @@ input { accent-color:var(--gal); }
     </div><p id="orientationStatus" class="note" role="status">Compass access has not started.</p>
     <p class="note">For a steadier compass, move the phone in a figure eight and keep it away from magnets and metal. Heading precision depends on your phone's sensors.</p><button id="stop" type="button" hidden>Stop sensors</button></section>
     <section><h3>ABOUT THE ATLAS</h3><p class="note">5,023 stars from the <a href="https://cdsarc.cds.unistra.fr/viz-bin/cat/V/50">Yale Bright Star Catalogue</a>, plus selected <a href="https://heasarc.gsfc.nasa.gov/W3Browse/catalog/messier.html">Messier objects</a>. Positions and centre coordinates use an approximate J2000 frame, for visual navigation.</p>
+    <p class="note">Earth's forward direction uses <a href="https://ssd.jpl.nasa.gov/planets/approx_pos.html">JPL's approximate orbital elements</a> for the Earth–Moon barycentre (1800–2050), including orbital eccentricity. It updates with the current time and is an approximation for visual navigation.</p>
     <p class="note">Panorama: <a href="https://www.eso.org/public/images/eso0932a/">ESO/S. Brunier</a>, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Resized, reprojected and brightness adjusted. Magnetic north correction: <a href="https://www.ncei.noaa.gov/products/world-magnetic-model">WMM2025</a>, valid through 2029.</p></section>
   </aside>
 </main>
@@ -399,6 +402,35 @@ function gmst(date) {
   );
 }
 
+/* ---------- Earth's heliocentric orbital forward direction ---------- */
+
+function earthForward(date) {
+  // JPL Table 1, Earth–Moon barycentre, J2000 ecliptic, valid 1800–2050:
+  // https://ssd.jpl.nasa.gov/planets/approx_pos.html
+  // Use the barycentre as an approximation to Earth's orbit; UTC in place
+  // of TDB and omitted lunar/planetary perturbations suit visual navigation.
+  const T = (jd(date)-2451545.0)/36525;
+  const e = .01671123-.00004392*T;
+  const inclination = (-.00001531-.01294668*T)*R;
+  const perihelion = (102.93768193+.32327364*T)*R;
+  const M = (wrap(100.46457166+35999.37244981*T-perihelion*D+180)-180)*R;
+  let E = M;
+  for (let i=0;i<5;i++) E -= (E-e*Math.sin(E)-M)/(1-e*Math.cos(E));
+
+  // Differentiate x'=a(cos E-e), y'=a sqrt(1-e²) sin E.
+  // The positive common factor a*dE/dt cancels on normalization. This
+  // retains radial motion in the ellipse, rather than assuming a circle.
+  const vx = -Math.sin(E), vy = Math.sqrt(1-e*e)*Math.cos(E);
+  // The JPL Earth–Moon ascending node is zero. Rotate out of the orbital
+  // plane, then into the same J2000 equatorial frame as the star catalogue.
+  const x = Math.cos(perihelion)*vx-Math.sin(perihelion)*vy;
+  const yOrb = Math.sin(perihelion)*vx+Math.cos(perihelion)*vy;
+  const y = yOrb*Math.cos(inclination), z = yOrb*Math.sin(inclination);
+  const obliquity = 23.43928*R;
+  return normalize([x,y*Math.cos(obliquity)-z*Math.sin(obliquity),
+    y*Math.sin(obliquity)+z*Math.cos(obliquity)]);
+}
+
 /* ---------- equatorial <-> local ENU ---------- */
 
 function eqToENU(v,latDeg,lstDeg) {
@@ -609,6 +641,7 @@ const dirs = [
  {id:"ngp",text:"+Z",name:"N GAL POLE",l:0,b:90,color:"#c7b1ed"},
  {id:"sgp",text:"−Z",name:"S GAL POLE",l:0,b:-90,color:"#c7b1ed"}
 ];
+const forwardDir = {id:"forward",text:"FORWARD",color:"#f4a58a"};
 const stars = (window.SKY_CATALOG?.stars ?? []).map(([hr,ra,dec,mag,bv,name]) =>
   ({hr,eq:spherical(ra,dec),ra,dec,mag,bv,name}));
 const deepSky = (window.SKY_CATALOG?.deep ?? []).map(([id,name,ra,dec,size,mag,kind]) =>
@@ -757,9 +790,14 @@ function marker(v,d,s,edge=false) {
   if (!inside && !edge) return;
   c.save(); c.strokeStyle=d.color; c.fillStyle=d.color; c.lineWidth=1.2;
   if (!inside) {
-    const dx=dot(v,s.camera.right), dy=-dot(v,s.camera.up);
+    const dx=dot(v,s.camera.right);
+    let dy=-dot(v,s.camera.up);
     // Edge cues indicate the shortest great-circle turn, including rays behind us.
-    if (Math.hypot(dx,dy)<1e-6) {c.restore();return;}
+    if (Math.hypot(dx,dy)<1e-6) {
+      if (d.id!=="forward") {c.restore();return;}
+      // At the antipode every turn is equally short; keep a forward cue.
+      dy=-1;
+    }
     const cx=view.width/2, cy=(top+bottom)/2;
     const factor=Math.min((view.width/2-25)/Math.max(Math.abs(dx),1e-6),
       (bottom-top)/2/Math.max(Math.abs(dy),1e-6));
@@ -781,6 +819,7 @@ function marker(v,d,s,edge=false) {
     const w=c.measureText(text).width;
     const offset=Math.hypot(x-view.width/2,y-view.height/2)<40 ? 38 : 14;
     if (reserveLabel(x+offset,y-8,w,16)) c.fillText(text,x+offset,y);
+    else if (d.id==="forward" && reserveLabel(x-offset-w,y-8,w,16)) c.fillText(text,x-offset-w,y);
   }
   c.restore();
 }
@@ -894,6 +933,7 @@ function draw() {
   if ($("horizon").checked) {
     polyline(horizonLine,horizontalConvert,s,"#b2c1d0",1,.42); drawCardinals(s);
   }
+  marker(eqToENU(earthForward(s.date),s.lat,s.lst),forwardDir,s,true);
   const ranked=dirs.map(d => ({d,v:galENU(d.l,d.b,s)}))
     .map(item => ({...item,angle:Math.acos(clamp(dot(item.v,s.camera.forward),-1,1))*D}))
     .sort((a,b) => a.angle-b.angle);

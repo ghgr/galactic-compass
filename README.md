@@ -30,6 +30,17 @@ as the Galactic axes. Labels avoid one another and the HUD, with at most four
 object labels on phones or six on larger screens. The Galactic plane and
 local horizon are subtle; the full coordinate grid is optional.
 
+The coral **FORWARD** marker points in the direction Earth is currently
+travelling around the Sun. An edge arrow guides you toward it when it is
+outside the view, including behind you. It updates with the current time
+and uses the same observer and camera projection as the Galactic markers.
+The direction is the heliocentric velocity of an elliptical orbit using
+[JPL's approximate Earth–Moon barycentre elements](https://ssd.jpl.nasa.gov/planets/approx_pos.html),
+valid for 1800–2050, transformed into J2000 equatorial coordinates.
+The barycentre approximates Earth's motion; lunar and planetary
+perturbations and the UTC/TDB difference are omitted. This is suitable for
+visual navigation rather than precision ephemerides.
+
 Imagery is an enhanced, historical sky atlas rather than a camera feed.
 Most nebulae are much fainter to the unaided eye. The panorama can include
 planets photographed in 2009; current planetary positions are not calculated.
@@ -129,3 +140,5 @@ alignment during magnetic glitches, interface rotation, and app-view help.
 The astronomy checks also cover catalogue coordinates, RA/Dec rounding,
 equatorial/local transforms, rectangular projection, panorama orientation,
 label collisions, and pointing the centre ray at Sirius.
+Orbital forward checks compare against JPL Horizons velocity vectors and
+cover time updates and pointer placement inside and outside the view.
