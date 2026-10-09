@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="assets/icon-180.png">
 <title>Galactic Compass</title>
 <style>
-:root { color-scheme:dark; --bg:#04080e; --text:#e6edf6; --muted:#9aaabb; --line:#ffffff1c; --gal:#8acddd; --radial:#e9c58a; --tangential:#a6d7ac; --vertical:#c7b1ed; --forward:#f4a58a; }
+:root { color-scheme:dark; --bg:#04080e; --text:#e6edf6; --muted:#9aaabb; --line:#ffffff1c; --gal:#8acddd; --radial:#e9c58a; --tangential:#a6d7ac; --vertical:#c7b1ed; --forward:#f4a58a; --sun:#ffd36b; }
 * { box-sizing:border-box; }
 body { margin:0; background:var(--bg); color:var(--text); font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; overflow:hidden; }
 main { position:relative; width:100%; height:100vh; height:100dvh; height:var(--viewport-height,100vh); overflow:hidden; }
@@ -74,6 +74,7 @@ input { accent-color:var(--gal); }
 .legend { display:flex; justify-content:space-between; font-size:10px; margin:13px 0; }
 .legend span:nth-child(1) { color:var(--radial); } .legend span:nth-child(2) { color:var(--tangential); } .legend span:nth-child(3) { color:var(--vertical); }
 .forward-key { color:var(--forward); }
+.sun-key { color:var(--sun); }
 @media (max-width:600px) {
   header { padding-left:18px; padding-right:18px; }
   h1 { font-size:12px; letter-spacing:.13em; } .brand { gap:9px; } .brand svg { width:24px; }
@@ -96,7 +97,7 @@ input { accent-color:var(--gal); }
 </head>
 <body>
 <main id="instrument">
-  <canvas id="canvas" width="900" height="900" aria-label="Live sky with stars, nebulae, Galactic directions and Earth's orbital forward direction behind your phone"></canvas>
+  <canvas id="canvas" width="900" height="900" aria-label="Live sky with stars, nebulae, the Sun, Galactic directions and Earth's orbital forward direction behind your phone"></canvas>
   <div class="vignette"></div>
   <header>
     <div class="brand">
@@ -143,6 +144,7 @@ input { accent-color:var(--gal); }
       <div class="legend"><span>● IN / OUT</span><span>● ROTATION</span><span>● POLES</span></div>
       <p class="note">The thin cyan line traces the Galactic plane. Arrow tips guide you toward axes outside the view.</p>
       <p class="note"><span class="forward-key">● FORWARD</span> marks the direction Earth is travelling around the Sun right now. Its edge arrow guides you when that direction is outside the view.</p>
+      <p class="note"><span class="sun-key">☀ SUN</span> marks the Sun's current direction, with a gold edge arrow when it is outside the view. It also appears below the horizon at night.</p>
       <p class="note">This is an enhanced sky atlas. Nebulae are usually much fainter to the eye. The panorama is a historical photograph; planets are not tracked. The atlas also shows directions below your horizon.</p>
     </section>
     <section><h3>OBSERVER</h3><div class="readout">
@@ -154,7 +156,7 @@ input { accent-color:var(--gal); }
     </div><p id="orientationStatus" class="note" role="status">Compass access has not started.</p>
     <p class="note">For a steadier compass, move the phone in a figure eight and keep it away from magnets and metal. Heading precision depends on your phone's sensors.</p><button id="stop" type="button" hidden>Stop sensors</button></section>
     <section><h3>ABOUT THE ATLAS</h3><p class="note">5,023 stars from the <a href="https://cdsarc.cds.unistra.fr/viz-bin/cat/V/50">Yale Bright Star Catalogue</a>, plus selected <a href="https://heasarc.gsfc.nasa.gov/W3Browse/catalog/messier.html">Messier objects</a>. Positions and centre coordinates use an approximate J2000 frame, for visual navigation.</p>
-    <p class="note">Earth's forward direction uses <a href="https://ssd.jpl.nasa.gov/planets/approx_pos.html">JPL's approximate orbital elements</a> for the Earth–Moon barycentre (1800–2050), including orbital eccentricity. It updates with the current time and is an approximation for visual navigation.</p>
+    <p class="note">The Sun and Earth's forward direction use <a href="https://ssd.jpl.nasa.gov/planets/approx_pos.html">JPL's approximate orbital elements</a> for the Earth–Moon barycentre (1800–2050), including orbital eccentricity. They update with the current time and are approximations for visual navigation.</p>
     <p class="note">Panorama: <a href="https://www.eso.org/public/images/eso0932a/">ESO/S. Brunier</a>, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Resized, reprojected and brightness adjusted. Magnetic north correction: <a href="https://www.ncei.noaa.gov/products/world-magnetic-model">WMM2025</a>, valid through 2029.</p></section>
   </aside>
 </main>
@@ -402,9 +404,9 @@ function gmst(date) {
   );
 }
 
-/* ---------- Earth's heliocentric orbital forward direction ---------- */
+/* ---------- Earth's orbit and the Sun's direction ---------- */
 
-function earthForward(date) {
+function earthOrbit(date) {
   // JPL Table 1, Earth–Moon barycentre, J2000 ecliptic, valid 1800–2050:
   // https://ssd.jpl.nasa.gov/planets/approx_pos.html
   // Use the barycentre as an approximation to Earth's orbit; UTC in place
@@ -417,18 +419,25 @@ function earthForward(date) {
   let E = M;
   for (let i=0;i<5;i++) E -= (E-e*Math.sin(E)-M)/(1-e*Math.cos(E));
 
-  // Differentiate x'=a(cos E-e), y'=a sqrt(1-e²) sin E.
-  // The positive common factor a*dE/dt cancels on normalization. This
-  // retains radial motion in the ellipse, rather than assuming a circle.
-  const vx = -Math.sin(E), vy = Math.sqrt(1-e*e)*Math.cos(E);
   // The JPL Earth–Moon ascending node is zero. Rotate out of the orbital
   // plane, then into the same J2000 equatorial frame as the star catalogue.
-  const x = Math.cos(perihelion)*vx-Math.sin(perihelion)*vy;
-  const yOrb = Math.sin(perihelion)*vx+Math.cos(perihelion)*vy;
-  const y = yOrb*Math.cos(inclination), z = yOrb*Math.sin(inclination);
   const obliquity = 23.43928*R;
-  return normalize([x,y*Math.cos(obliquity)-z*Math.sin(obliquity),
-    y*Math.sin(obliquity)+z*Math.cos(obliquity)]);
+  const toEq = (vx,vy) => {
+    const x = Math.cos(perihelion)*vx-Math.sin(perihelion)*vy;
+    const yOrb = Math.sin(perihelion)*vx+Math.cos(perihelion)*vy;
+    const y = yOrb*Math.cos(inclination), z = yOrb*Math.sin(inclination);
+    return normalize([x,y*Math.cos(obliquity)-z*Math.sin(obliquity),
+      y*Math.sin(obliquity)+z*Math.cos(obliquity)]);
+  };
+  const minorAxis = Math.sqrt(1-e*e);
+  return {
+    // Differentiate x'=a(cos E-e), y'=a sqrt(1-e²) sin E. The positive
+    // factor a*dE/dt cancels, retaining radial motion in the ellipse.
+    forward: toEq(-Math.sin(E),minorAxis*Math.cos(E)),
+    // Earth -> Sun is the negative of Earth's heliocentric position.
+    // This is a geometric direction, without aberration or refraction.
+    sun: toEq(e-Math.cos(E),-minorAxis*Math.sin(E))
+  };
 }
 
 /* ---------- equatorial <-> local ENU ---------- */
@@ -642,6 +651,7 @@ const dirs = [
  {id:"sgp",text:"−Z",name:"S GAL POLE",l:0,b:-90,color:"#c7b1ed"}
 ];
 const forwardDir = {id:"forward",text:"FORWARD",color:"#f4a58a"};
+const sunDir = {id:"sun",text:"SUN",color:"#ffd36b"};
 const stars = (window.SKY_CATALOG?.stars ?? []).map(([hr,ra,dec,mag,bv,name]) =>
   ({hr,eq:spherical(ra,dec),ra,dec,mag,bv,name}));
 const deepSky = (window.SKY_CATALOG?.deep ?? []).map(([id,name,ra,dec,size,mag,kind]) =>
@@ -787,6 +797,7 @@ function marker(v,d,s,edge=false) {
   const bottom=view.height-(view.width<=600 ? 190 : 155);
   let x=q.x,y=q.y;
   const inside=inView(q,28) && y>top && y<bottom;
+  const solar=d.id==="forward" || d.id==="sun";
   if (!inside && !edge) return;
   c.save(); c.strokeStyle=d.color; c.fillStyle=d.color; c.lineWidth=1.2;
   if (!inside) {
@@ -794,8 +805,8 @@ function marker(v,d,s,edge=false) {
     let dy=-dot(v,s.camera.up);
     // Edge cues indicate the shortest great-circle turn, including rays behind us.
     if (Math.hypot(dx,dy)<1e-6) {
-      if (d.id!=="forward") {c.restore();return;}
-      // At the antipode every turn is equally short; keep a forward cue.
+      if (!solar) {c.restore();return;}
+      // At the antipode every turn is equally short; keep a direction cue.
       dy=-1;
     }
     const cx=view.width/2, cy=(top+bottom)/2;
@@ -810,16 +821,31 @@ function marker(v,d,s,edge=false) {
     c.font="10px ui-monospace,monospace"; c.textBaseline="middle";
     const w=c.measureText(d.text).width;
     const lx=x>view.width/2 ? tx-w : tx;
-    if (reserveLabel(lx,y-7,w,14)) {c.textAlign="left"; c.fillText(d.text,lx,y);}
+    for (const offset of solar ? [0,-28,28] : [0]) {
+      if (reserveLabel(lx,y+offset-7,w,14)) {
+        c.textAlign="left"; c.fillText(d.text,lx,y+offset); break;
+      }
+    }
   } else {
-    c.beginPath(); c.arc(x,y,d.id==="gc" ? 8 : 5,0,2*Math.PI); c.stroke();
-    c.beginPath(); c.arc(x,y,1.5,0,2*Math.PI); c.fill();
+    if (d.id==="sun") {
+      c.beginPath(); c.arc(x,y,5,0,2*Math.PI); c.fill();
+      c.beginPath();
+      for (let i=0;i<8;i++) {
+        const a=i*Math.PI/4;
+        c.moveTo(x+8*Math.cos(a),y+8*Math.sin(a));
+        c.lineTo(x+12*Math.cos(a),y+12*Math.sin(a));
+      }
+      c.stroke();
+    } else {
+      c.beginPath(); c.arc(x,y,d.id==="gc" ? 8 : 5,0,2*Math.PI); c.stroke();
+      c.beginPath(); c.arc(x,y,1.5,0,2*Math.PI); c.fill();
+    }
     c.font="11px ui-monospace,monospace"; c.textAlign="left"; c.textBaseline="middle";
     const text=d.id==="gc" ? "GALACTIC CENTRE" : d.text;
     const w=c.measureText(text).width;
     const offset=Math.hypot(x-view.width/2,y-view.height/2)<40 ? 38 : 14;
     if (reserveLabel(x+offset,y-8,w,16)) c.fillText(text,x+offset,y);
-    else if (d.id==="forward" && reserveLabel(x-offset-w,y-8,w,16)) c.fillText(text,x-offset-w,y);
+    else if (solar && reserveLabel(x-offset-w,y-8,w,16)) c.fillText(text,x-offset-w,y);
   }
   c.restore();
 }
@@ -933,7 +959,9 @@ function draw() {
   if ($("horizon").checked) {
     polyline(horizonLine,horizontalConvert,s,"#b2c1d0",1,.42); drawCardinals(s);
   }
-  marker(eqToENU(earthForward(s.date),s.lat,s.lst),forwardDir,s,true);
+  const orbit=earthOrbit(s.date);
+  marker(eqToENU(orbit.forward,s.lat,s.lst),forwardDir,s,true);
+  marker(eqToENU(orbit.sun,s.lat,s.lst),sunDir,s,true);
   const ranked=dirs.map(d => ({d,v:galENU(d.l,d.b,s)}))
     .map(item => ({...item,angle:Math.acos(clamp(dot(item.v,s.camera.forward),-1,1))*D}))
     .sort((a,b) => a.angle-b.angle);

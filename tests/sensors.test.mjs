@@ -9,7 +9,7 @@ const html = readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const catalogue = readFileSync(new URL('../assets/sky-catalog.js',import.meta.url),'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(
   /\}\)\(\);\s*$/,
-  'globalThis.app = {camera,deviceMatrix,magneticField,vectorAltAz,dot,state,observerState,sensors,draw,stars,deepSky,formatRA,formatDec,equatorial,galToEq,enuToEq,eqToENU,project,view,panoramaUV,reserveLabel,resetLabelBoxes,screenAngle,earthForward,marker,forwardDir};})();'
+  'globalThis.app = {camera,deviceMatrix,magneticField,vectorAltAz,dot,state,observerState,sensors,draw,stars,deepSky,formatRA,formatDec,equatorial,galToEq,enuToEq,eqToENU,project,view,panoramaUV,reserveLabel,resetLabelBoxes,screenAngle,earthOrbit,marker,forwardDir,sunDir};})();'
 );
 
 function browser(options={}) {
@@ -115,6 +115,7 @@ test('startup has no made-up observer or attitude, and mock controls are removed
   assert.equal(b.text('site'),'—');
   assert.equal(b.text('lb'),'—');
   assert.equal(b.paint.some(call => call.text==='FORWARD'),false);
+  assert.equal(b.paint.some(call => call.text==='SUN'),false);
   assert.doesNotMatch(html,/type="range"|data-target|MOCK OBSERVER|simulated sensor/i);
 });
 
@@ -170,32 +171,70 @@ const earthVelocityCases = [
 test('orbital forward agrees with independent heliocentric Earth velocities',() => {
   const {app}=browser();
   for (const [date,velocity] of earthVelocityCases) {
-    const forward=app.earthForward(new Date(`${date}T00:00:00Z`));
+    const forward=app.earthOrbit(new Date(`${date}T00:00:00Z`)).forward;
     close(Math.hypot(...forward),1);
     assert.ok(angle(forward,velocity)<.05,`${date}: forward must match Horizons within 0.05°`);
   }
 });
 
-test('forward marker stays labelled in portrait and landscape, including behind us',() => {
+// JPL Horizons DE441, Sun (10) relative to Earth (500@399), geometric
+// ICRF position in km at 00:00 UT, retrieved 2026-10-09 using the API above:
+// EPHEM_TYPE=VECTORS, REF_PLANE=FRAME, VEC_CORR=NONE, TIME_TYPE=UT.
+const sunPositionCases = [
+  ['2026-01-03',[31204286.47251716,-131893719.2519719,-57173369.83585898]],
+  ['2026-03-20',[148940181.5004538,-2322766.927211472,-1007535.460920836]],
+  ['2026-06-21',[1859105.257030547,139466364.1744885,60455989.48894807]],
+  ['2026-07-04',[-30829467.86016228,136642184.8498475,59232063.76113867]],
+  ['2026-09-23',[-150129913.2216605,898130.3286959486,390199.1972338253]],
+  ['2026-10-09',[-144128907.2215640,-36300716.44101813,-15734914.66681168]],
+  ['2026-12-21',[-3229722.009149019,-135000446.6529693,-58519369.57866828]]
+];
+test('Sun direction agrees with independent geocentric positions across the seasons',() => {
+  const {app}=browser();
+  for (const [date,position] of sunPositionCases) {
+    const sun=app.earthOrbit(new Date(`${date}T00:00:00Z`)).sun;
+    close(Math.hypot(...sun),1);
+    assert.ok(angle(sun,position)<.02,`${date}: Sun must match Horizons within 0.02°`);
+  }
+});
+
+test('solar markers stay labelled in portrait and landscape, including behind us',() => {
   const b=browser(), {app}=b;
   const s={camera:{right:[1,0,0],up:[0,1,0],forward:[0,0,1]}};
   for (const [width,height] of [[390,844],[844,390]]) {
     Object.assign(app.view,{width,height});
     // Centred, near the right edge, off-screen, behind, exactly opposite.
+    for (const d of [app.forwardDir,app.sunDir])
     for (const v of [[0,0,1],[.7,0,.714142842854285],[1,0,0],[.6,0,-.8],[0,0,-1]]) {
       b.paint.length=0; app.resetLabelBoxes();
-      app.marker(v,app.forwardDir,s,true);
-      const label=b.paint.find(call => call.text==='FORWARD');
-      assert.ok(label,`${width}×${height}, ${v}: forward label must be visible`);
-      assert.equal(label.color,app.forwardDir.color);
+      app.marker(v,d,s,true);
+      const label=b.paint.find(call => call.text===d.text);
+      assert.ok(label,`${width}×${height}, ${v}: ${d.text} label must be visible`);
+      assert.equal(label.color,d.color);
       assert.ok(label.x>=8 && label.x+7*label.text.length<=width-8);
       assert.ok(label.y>=(width<=600 ? 145 : 130) && label.y<=height-(width<=600 ? 190 : 155));
       if (v[2]<=0) {
         const edge=b.paint.find(call => call.translate)?.translate;
-        assert.ok(edge,'off-screen forward must have an arrow');
+        assert.ok(edge,`off-screen ${d.text} must have an arrow`);
         if (v[0]>0) assert.ok(edge[0]>width/2,'turn right even when the ray is behind us');
       }
     }
+  }
+});
+
+test('Sun and forward labels remain distinct when their arrows share an edge',() => {
+  const b=browser(), {app}=b;
+  const s={camera:{right:[1,0,0],up:[0,1,0],forward:[0,0,1]}};
+  for (const [width,height] of [[390,844],[844,390]]) {
+    Object.assign(app.view,{width,height});
+    b.paint.length=0; app.resetLabelBoxes();
+    app.marker([1,0,0],app.forwardDir,s,true);
+    app.marker([.6,0,-.8],app.sunDir,s,true);
+    const forward=b.paint.find(call => call.text==='FORWARD');
+    const sun=b.paint.find(call => call.text==='SUN');
+    assert.ok(forward && sun,'both labels must remain visible');
+    assert.notEqual(sun.color,forward.color);
+    assert.ok(Math.abs(sun.y-forward.y)>=18,'labels must not overlap');
   }
 });
 
@@ -204,7 +243,7 @@ test('pointing at orbital forward aligns its marker and updates it with live tim
   const {app}=b;
   b.elements.get('labels').checked=false;
   const pointForward = () => {
-    const observer=app.observerState(), forward=app.earthForward(observer.date);
+    const observer=app.observerState(), forward=app.earthOrbit(observer.date).forward;
     const [az,alt]=app.vectorAltAz(app.eqToENU(forward,observer.lat,observer.lst));
     b.paint.length=0;
     b.orientation({alpha:((app.sensors.field.declination-az)%360+360)%360,beta:90+alt,gamma:0});
@@ -225,6 +264,41 @@ test('pointing at orbital forward aligns its marker and updates it with live tim
   assert.ok(angle(before,after)>.9 && angle(before,after)<1.1,'forward changes with the orbit');
   b.paint.length=0; b.stop();
   assert.equal(b.paint.some(call => call.text==='FORWARD'),false);
+});
+
+test('Sun follows live time above and below the horizon with sky layers disabled',async () => {
+  const b=browser(); await b.start(); b.position({latitude:0,longitude:0});
+  const {app}=b;
+  b.elements.get('imagery').checked=false;
+  b.elements.get('labels').checked=false;
+  const pointSun = () => {
+    const observer=app.observerState(), sun=app.earthOrbit(observer.date).sun;
+    const local=app.eqToENU(sun,observer.lat,observer.lst);
+    const [az,alt]=app.vectorAltAz(local);
+    b.paint.length=0;
+    b.orientation({alpha:((app.sensors.field.declination-az)%360+360)%360,beta:90+alt,gamma:0});
+    const [ra,dec]=app.equatorial(sun);
+    assert.equal(b.text('ra'),app.formatRA(ra));
+    assert.equal(b.text('dec'),app.formatDec(dec));
+    const label=b.paint.find(call => call.text==='SUN');
+    assert.ok(label,'Sun is drawn even with imagery and star labels disabled');
+    assert.equal(label.color,app.sunDir.color);
+    close(label.x,app.view.width/2+38); close(label.y,app.view.height/2);
+    assert.ok(b.paint.some(call => call.text==='FORWARD'),'forward still appears alongside Sun');
+    return {sun,alt};
+  };
+  const noon=pointSun();
+  assert.ok(noon.alt>60,'Sun is above the equatorial horizon at noon');
+  assert.doesNotMatch(b.text('sceneState'),/BELOW/);
+  b.paint.length=0; b.advance(12*3600000);
+  assert.equal(b.paint.some(call => call.text==='SUN'),false,'stale location suspends the Sun marker');
+  b.position({latitude:0,longitude:0});
+  const midnight=pointSun();
+  assert.ok(midnight.alt<-60,'Sun is below the horizon at midnight');
+  assert.match(b.text('sceneState'),/BELOW YOUR HORIZON/);
+  assert.ok(angle(noon.sun,midnight.sun)>.4 && angle(noon.sun,midnight.sun)<.6,'Sun direction advances with time');
+  b.paint.length=0; b.stop();
+  assert.equal(b.paint.some(call => call.text==='SUN'),false);
 });
 
 test('rectangular projection keeps the reticle centred in portrait and landscape',() => {

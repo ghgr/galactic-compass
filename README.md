@@ -41,6 +41,13 @@ The barycentre approximates Earth's motion; lunar and planetary
 perturbations and the UTC/TDB difference are omitted. This is suitable for
 visual navigation rather than precision ephemerides.
 
+The gold **SUN** marker shows the Sun's current direction as a small disc
+with rays. Its edge arrow guides you when it is outside the view, including
+below the horizon at night. It uses the Earth-to-Sun position from the same
+orbital model and observer projection as **FORWARD**. The symbol is a
+direction marker; its size does not represent the Sun's angular diameter.
+Solar aberration, observer parallax, and atmospheric refraction are omitted.
+
 Imagery is an enhanced, historical sky atlas rather than a camera feed.
 Most nebulae are much fainter to the unaided eye. The panorama can include
 planets photographed in 2009; current planetary positions are not calculated.
@@ -142,3 +149,5 @@ equatorial/local transforms, rectangular projection, panorama orientation,
 label collisions, and pointing the centre ray at Sirius.
 Orbital forward checks compare against JPL Horizons velocity vectors and
 cover time updates and pointer placement inside and outside the view.
+Sun checks compare against JPL Horizons geocentric position vectors and
+cover live time, daylight/night directions, and shared edge labels.
