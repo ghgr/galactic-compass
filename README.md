@@ -56,6 +56,13 @@ All assets are served locally. WebGL reprojects the panorama; browsers that
 disable it use a bounded-resolution CPU fallback with sharp catalogue stars
 and readouts. The settings drawer can disable imagery and labels separately.
 
+The panorama is displayed on its own canvas beneath the sharp sky overlays,
+so each redraw avoids copying the rendered image into another canvas.
+Sensor bursts use the latest pose in one animation frame. Repeated identical
+poses reuse the existing sky until the next second, while sensor status and
+freshness still update. Movement keeps the browser's animation-frame cadence;
+panorama detail, brightness, and the existing resolution limits are preserved.
+
 `assets/milky-way.jpg` is the ESO panorama resized to 2048 × 1024 and rendered
 with adjusted brightness, licensed under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
@@ -151,3 +158,5 @@ Orbital forward checks compare against JPL Horizons velocity vectors and
 cover time updates and pointer placement inside and outside the view.
 Sun checks compare against JPL Horizons geocentric position vectors and
 cover live time, daylight/night directions, and shared edge labels.
+Rendering checks cover repeated poses, burst coalescing, time updates,
+resize and settings invalidation, and WebGL-to-CPU layer replacement.

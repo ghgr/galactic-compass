@@ -9,7 +9,7 @@ const html = readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const catalogue = readFileSync(new URL('../assets/sky-catalog.js',import.meta.url),'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(
   /\}\)\(\);\s*$/,
-  'globalThis.app = {camera,deviceMatrix,magneticField,vectorAltAz,dot,state,observerState,sensors,draw,stars,deepSky,formatRA,formatDec,equatorial,galToEq,enuToEq,eqToENU,project,view,panoramaUV,reserveLabel,resetLabelBoxes,screenAngle,earthOrbit,marker,forwardDir,sunDir};})();'
+  'globalThis.app = {camera,deviceMatrix,magneticField,vectorAltAz,dot,state,observerState,sensors,draw,stars,deepSky,formatRA,formatDec,equatorial,galToEq,enuToEq,eqToENU,project,view,panoramaUV,reserveLabel,resetLabelBoxes,screenAngle,earthOrbit,marker,forwardDir,sunDir,requestDraw,resizeCanvas,get panoramaRenderer(){return panoramaRenderer;}};})();'
 );
 
 function browser(options={}) {
@@ -32,11 +32,15 @@ function browser(options={}) {
   };
   const elements = new Map([...html.matchAll(/id="([^"]+)"/g)].map(([,id]) => [id,eventTarget({
     textContent:'',checked:true,hidden:false,disabled:false,dataset:{},width:900,height:900,
-    setAttribute(key,value) {this[key]=value;},focus() {}
+    setAttribute(key,value) {this[key]=value;},focus() {},
+    replaceChildren(...children) {this.children=children;}
   })]));
   const paint = [];
   const context2d = new Proxy({
     createRadialGradient:() => ({addColorStop(){}}),measureText:text => ({width:text.length*7}),
+    clearRect() {paint.push({clear:true});},
+    fillRect(...bounds) {paint.push({fillRect:bounds});},
+    drawImage(image,...bounds) {paint.push({image,bounds});},
     fillText(text,x,y) {paint.push({text,x,y,color:this.fillStyle});},
     translate(x,y) {paint.push({translate:[x,y]});}
   }, {
@@ -44,7 +48,36 @@ function browser(options={}) {
     set:(target,key,value) => {target[key]=value;return true;}
   });
   elements.get('canvas').getContext = () => context2d;
-  const document = eventTarget({hidden:false,getElementById:id => elements.get(id) ?? null});
+  const bufferWrites=[];
+  for (const axis of ['width','height']) {
+    let value=elements.get('canvas')[axis];
+    Object.defineProperty(elements.get('canvas'),axis,{
+      get:() => value,set:next => {value=next;bufferWrites.push({axis,value:next});}
+    });
+  }
+  const surfaces=[],images=[];
+  const document = eventTarget({hidden:false,getElementById:id => elements.get(id) ?? null,
+    createElement(tag) {
+      assert.equal(tag,'canvas');
+      const operations=[];
+      const surface=eventTarget({width:300,height:150,operations,contextRequests:[]});
+      const ctx=new Proxy({
+        drawImage(image) {operations.push({image});},
+        getImageData(x,y,w,h) {return {data:new Uint8ClampedArray(w*h*4).fill(128)};},
+        createImageData(w,h) {return {width:w,height:h,data:new Uint8ClampedArray(w*h*4)};},
+        putImageData(frame) {operations.push({frame});}
+      },{get:(target,key) => key in target ? target[key] : () => {}});
+      surface.getContext=(type,attributes) => {
+        surface.contextRequests.push({type,attributes});
+        if (type==='webgl') {
+          if (options.glThrows) throw new Error('WebGL unavailable');
+          return options.gl ?? null;
+        }
+        return ctx;
+      };
+      surfaces.push(surface); return surface;
+    }
+  });
   const watches = new Map(), cleared = [], permissions = [], frames = new Map();
   let nextWatch = 0, nextFrame = 0;
   const geolocation = {
@@ -71,6 +104,9 @@ function browser(options={}) {
     setInterval(fn) {context.tick=fn;},Promise,console
   });
   context.window = context;
+  if (options.image) context.Image=class {
+    constructor() {this.width=4;this.height=2;images.push(this);}
+  };
   if (options.legacyAngle !== undefined) context.orientation = options.legacyAngle;
   if (options.absoluteEvents) context.ondeviceorientationabsolute = null;
   if (options.absoluteSensor) context.AbsoluteOrientationSensor = options.absoluteSensor;
@@ -78,7 +114,7 @@ function browser(options={}) {
   vm.runInNewContext(script,context);
   const flush = () => {const pending=[...frames.values()];frames.clear();for (const fn of pending) fn();};
   return {
-    app:context.app,context,elements,watches,cleared,permissions,paint,
+    app:context.app,context,elements,watches,cleared,permissions,paint,frames,bufferWrites,surfaces,images,
     flush,
     text:id => elements.get(id).textContent,
     async start() {elements.get('start').emit('click');await Promise.resolve();await Promise.resolve();flush();},
@@ -107,6 +143,17 @@ function angle(a,b) {
   return Math.acos(Math.max(-1,Math.min(1,cosine)))*180/Math.PI;
 }
 
+function fakeWebGL(options={}) {
+  const calls=[];
+  return new Proxy({
+    calls,createProgram:() => ({}),createShader:() => ({}),createBuffer:() => ({}),createTexture:() => ({}),
+    getShaderParameter:() => options.compile!==false,getProgramParameter:() => options.link!==false,
+    getUniformLocation:(program,name) => name,
+    drawArrays(...args) {calls.push({draw:args});},
+    viewport(...args) {calls.push({viewport:args});}
+  },{get:(target,key) => key in target ? target[key] : () => {}});
+}
+
 test('startup has no made-up observer or attitude, and mock controls are removed',() => {
   const b = browser();
   assert.equal(b.app.state(),null);
@@ -117,6 +164,136 @@ test('startup has no made-up observer or attitude, and mock controls are removed
   assert.equal(b.paint.some(call => call.text==='FORWARD'),false);
   assert.equal(b.paint.some(call => call.text==='SUN'),false);
   assert.doesNotMatch(html,/type="range"|data-target|MOCK OBSERVER|simulated sensor/i);
+});
+
+test('identical poses reuse the sky while motion and the one-second clock redraw it',async () => {
+  const b=browser(); await b.start(); b.position(); b.orientation();
+  b.paint.length=0;
+  for (let i=0;i<10;i++) b.orientation();
+  assert.equal(b.paint.filter(call => call.clear).length,0);
+  assert.match(b.text('sensorStatus'),/Tracking live/);
+  b.advance(1000);
+  assert.equal(b.paint.filter(call => call.clear).length,1,'stationary sky still follows time');
+  b.paint.length=0; b.orientation({alpha:.001});
+  assert.equal(b.paint.filter(call => call.clear).length,1,'even small movements draw without a dead zone');
+  b.paint.length=0; b.advance(6000);
+  assert.equal(b.paint.filter(call => call.clear).length,1);
+  assert.equal(b.text('orientationTime'),'6 s ago');
+  b.paint.length=0; b.advance(120000);
+  assert.equal(b.app.state(),null);
+  assert.equal(b.paint.filter(call => call.clear).length,1,'stale sky clears immediately');
+  assert.match(b.text('locationStatus'),/stale/);
+  b.paint.length=0; b.advance(1000);
+  assert.equal(b.paint.filter(call => call.clear).length,0,'unchanged welcome scene is retained');
+});
+
+test('sensor bursts coalesce into one frame using the newest pose',async () => {
+  const b=browser(); await b.start(); b.position(); b.orientation();
+  b.paint.length=0;
+  for (const alpha of [10,20,30]) b.context.emit('deviceorientationabsolute',{
+    type:'deviceorientationabsolute',alpha,beta:90,gamma:0,absolute:true
+  });
+  assert.equal(b.frames.size,1);
+  assert.equal(b.paint.filter(call => call.clear).length,0);
+  b.flush();
+  assert.equal(b.paint.filter(call => call.clear).length,1);
+  const s=b.app.state(), eq=b.app.enuToEq(s.camera.forward,s.lat,s.lst);
+  assert.equal(b.app.sensors.orientation.alpha,30);
+  assert.equal(b.text('ra'),b.app.formatRA(b.app.equatorial(eq)[0]));
+  assert.equal(b.frames.size,0,'no perpetual animation loop is created');
+});
+
+test('settings force redraws and unchanged resize events retain canvas buffers',async () => {
+  const b=browser(); await b.start(); b.position(); b.orientation();
+  b.paint.length=0; b.bufferWrites.length=0;
+  b.context.emit('resize'); b.context.emit('resize'); b.flush();
+  assert.equal(b.bufferWrites.length,0);
+  assert.equal(b.paint.filter(call => call.clear).length,0);
+  b.elements.get('labels').emit('input'); b.flush();
+  assert.equal(b.paint.filter(call => call.clear).length,1,'explicit layer changes invalidate the cache');
+  b.paint.length=0;
+  Object.assign(b.elements.get('canvas'),{clientWidth:390,clientHeight:844});
+  b.context.emit('resize'); b.flush();
+  assert.equal(b.paint.filter(call => call.clear).length,1);
+  assert.deepEqual(b.bufferWrites,[{axis:'width',value:390},{axis:'height',value:844}]);
+  b.paint.length=0; b.bufferWrites.length=0;
+  b.context.emit('resize'); b.flush();
+  assert.equal(b.bufferWrites.length,0);
+  assert.equal(b.paint.filter(call => call.clear).length,0);
+});
+
+test('CPU panorama stays on its own layer, with a transparent foreground and immediate hiding',async () => {
+  const b=browser({image:true}); await b.start(); b.position(); b.orientation();
+  b.paint.length=0;
+  b.images[0].onload(); b.flush();
+  const layer=b.elements.get('panoramaLayer'), renderer=b.app.panoramaRenderer;
+  assert.deepEqual(layer.children,[renderer.surface]);
+  assert.equal(layer.hidden,false);
+  assert.equal(renderer.surface.width,280); assert.equal(renderer.surface.height,280);
+  assert.ok(renderer.surface.operations.some(operation => operation.frame));
+  assert.equal(b.paint.filter(call => call.image).length,0,'panorama is never copied into the foreground');
+  const opaqueFills=() => b.paint.filter(call => call.fillRect?.[2]===b.app.view.width && call.fillRect?.[3]===b.app.view.height);
+  assert.equal(opaqueFills().length,0,'foreground leaves imagery visible');
+  b.paint.length=0;
+  b.elements.get('imagery').checked=false; b.elements.get('imagery').emit('input'); b.flush();
+  assert.equal(layer.hidden,true);
+  assert.equal(opaqueFills().length,1);
+  assert.ok(b.paint.some(call => call.text==='FORWARD'));
+  b.elements.get('imagery').checked=true; b.elements.get('imagery').emit('input'); b.flush();
+  assert.equal(layer.hidden,false);
+  b.orientation({alpha:null,beta:null,gamma:null});
+  assert.equal(layer.hidden,true,'invalid readings hide the previous projected panorama');
+  b.orientation();
+  assert.equal(layer.hidden,false);
+  b.context.emit('deviceorientationabsolute',{type:'deviceorientationabsolute',alpha:1,beta:90,gamma:0,absolute:true});
+  assert.equal(b.frames.size,1);
+  b.visibility(true);
+  assert.equal(b.frames.size,0,'backgrounding cancels the pending repaint');
+  b.visibility(false);
+  assert.equal(layer.hidden,true,'returning waits for a new attitude');
+  b.orientation();
+  assert.equal(layer.hidden,false);
+  b.advance(120001);
+  assert.equal(layer.hidden,true,'stale location hides the previous projected panorama');
+  b.position(); b.orientation();
+  assert.equal(layer.hidden,false);
+  b.stop(); assert.equal(layer.hidden,true);
+});
+
+test('WebGL context loss replaces its display canvas with a working CPU layer',async () => {
+  const gl=fakeWebGL(), b=browser({image:true,gl});
+  await b.start(); b.position(); b.orientation();
+  b.images[0].onload(); b.flush();
+  const layer=b.elements.get('panoramaLayer'), gpu=b.app.panoramaRenderer;
+  assert.equal(gpu.surface.contextRequests[0].attributes.preserveDrawingBuffer,true,'stationary panoramas retain their displayed pixels');
+  assert.equal(layer.children[0],gpu.surface);
+  assert.equal(gpu.surface.width,900); assert.equal(gpu.surface.height,900);
+  assert.equal(gl.calls.filter(call => call.draw).length,1);
+  let prevented=false;
+  b.paint.length=0;
+  gpu.surface.emit('webglcontextlost',{preventDefault() {prevented=true;}}); b.flush();
+  assert.equal(prevented,true);
+  const cpu=b.app.panoramaRenderer;
+  assert.notEqual(cpu.surface,gpu.surface);
+  assert.equal(layer.children[0],cpu.surface);
+  assert.equal(layer.hidden,false);
+  assert.ok(cpu.surface.operations.some(operation => operation.frame));
+  assert.equal(b.paint.filter(call => call.image).length,0);
+  b.orientation({alpha:1});
+  assert.equal(gl.calls.filter(call => call.draw).length,1,'lost GPU renderer is no longer used');
+  gpu.surface.emit('webglcontextlost',{preventDefault() {}}); b.flush();
+  assert.equal(b.app.panoramaRenderer,cpu,'late events cannot replace the active fallback');
+});
+
+test('unavailable, throwing, or failed WebGL initialization keeps the panorama through CPU fallback',async () => {
+  for (const options of [{},{glThrows:true},{gl:fakeWebGL({compile:false})},{gl:fakeWebGL({link:false})}]) {
+    const b=browser({image:true,...options}); await b.start(); b.position(); b.orientation();
+    b.images[0].onload(); b.flush();
+    const renderer=b.app.panoramaRenderer;
+    assert.ok(renderer.surface.operations.some(operation => operation.frame));
+    assert.equal(b.elements.get('panoramaLayer').children[0],renderer.surface);
+    assert.equal(b.elements.get('panoramaLayer').hidden,false);
+  }
 });
 
 test('equatorial formatting carries seconds/minutes and wraps RA at midnight',() => {

@@ -16,6 +16,7 @@
 body { margin:0; background:var(--bg); color:var(--text); font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; overflow:hidden; }
 main { position:relative; width:100%; height:100vh; height:100dvh; height:var(--viewport-height,100vh); overflow:hidden; }
 canvas { position:absolute; inset:0; display:block; width:100%; height:100%; }
+#panoramaLayer { position:absolute; inset:0; pointer-events:none; }
 .vignette { position:absolute; inset:0; pointer-events:none; background:linear-gradient(#04080ec9,transparent 23%,transparent 70%,#04080ed9),radial-gradient(ellipse at center,transparent 40%,#04080e55); }
 header { position:absolute; top:0; left:0; right:0; padding:calc(19px + env(safe-area-inset-top)) 24px 18px; display:flex; justify-content:space-between; align-items:center; gap:16px; pointer-events:none; }
 h1 { font:600 14px/1.2 ui-sans-serif,system-ui,sans-serif; letter-spacing:.19em; margin:0; }
@@ -97,6 +98,7 @@ input { accent-color:var(--gal); }
 </head>
 <body>
 <main id="instrument">
+  <div id="panoramaLayer" aria-hidden="true" hidden></div>
   <canvas id="canvas" width="900" height="900" aria-label="Live sky with stars, nebulae, the Sun, Galactic directions and Earth's orbital forward direction behind your phone"></canvas>
   <div class="vignette"></div>
   <header>
@@ -610,12 +612,16 @@ const focalLength = () => Math.min(view.width,view.height)/2/Math.tan(55*R);
 function resizeCanvas() {
   const viewportHeight=window.visualViewport?.height || window.innerHeight;
   if (viewportHeight) $("instrument").style.setProperty("--viewport-height",`${viewportHeight}px`);
-  view.width = C.clientWidth || window.innerWidth || 900;
-  view.height = C.clientHeight || window.innerHeight || 900;
-  view.dpr = Math.min(window.devicePixelRatio || 1,2);
-  C.width = Math.round(view.width*view.dpr);
-  C.height = Math.round(view.height*view.dpr);
-  requestDraw();
+  const width = C.clientWidth || window.innerWidth || 900;
+  const height = C.clientHeight || window.innerHeight || 900;
+  const dpr = Math.min(window.devicePixelRatio || 1,2);
+  const changed = width!==view.width || height!==view.height || dpr!==view.dpr;
+  Object.assign(view,{width,height,dpr});
+  const pixelWidth = Math.round(width*dpr), pixelHeight = Math.round(height*dpr);
+  const buffersChanged = C.width!==pixelWidth || C.height!==pixelHeight;
+  if (C.width!==pixelWidth) C.width=pixelWidth;
+  if (C.height!==pixelHeight) C.height=pixelHeight;
+  requestDraw(changed || buffersChanged);
 }
 
 function project(v,cam) {
@@ -661,13 +667,20 @@ const deepSky = (window.SKY_CATALOG?.deep ?? []).map(([id,name,ra,dec,size,mag,k
    longitude increasing toward the left. Render spherical rays on the GPU;
    a small CPU image provides the same geometry if WebGL is unavailable. */
 let panoramaImage = null, panoramaRenderer = null;
+function setPanoramaRenderer(renderer) {
+  panoramaRenderer=renderer;
+  $("panoramaLayer").replaceChildren(...(renderer ? [renderer.surface] : []));
+  if (!renderer) $("panoramaLayer").hidden=true;
+  requestDraw(true);
+}
 function panoramaUV(g) {
   return [((.5-Math.atan2(g[1],g[0])/(2*Math.PI))%1+1)%1,
     .5-Math.asin(clamp(g[2],-1,1))/Math.PI];
 }
 function makePanoramaRenderer(image) {
   const surface = document.createElement("canvas");
-  const gl = surface.getContext("webgl",{alpha:false,antialias:false});
+  // Retain the displayed panorama between redraws, including on WebKit.
+  const gl = surface.getContext("webgl",{alpha:false,antialias:false,preserveDrawingBuffer:true});
   if (!gl) return makeCPUPanorama(image);
   const program = gl.createProgram();
   const shaders = [
@@ -703,22 +716,22 @@ function makePanoramaRenderer(image) {
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
   const uniforms = Object.fromEntries(["resolution","focal","forward","right","up"].map(key =>
     [key,gl.getUniformLocation(program,key)]));
-  let fallback = null;
-  surface.addEventListener("webglcontextlost",event => {
-    event.preventDefault(); fallback = makeCPUPanorama(image); requestDraw();
-  });
-  return basis => {
-    if (fallback) return fallback(basis);
-    if (surface.width !== C.width || surface.height !== C.height) {
-      surface.width=C.width; surface.height=C.height;
-    }
+  const renderer = {surface,render(basis) {
+    if (surface.width !== C.width) surface.width=C.width;
+    if (surface.height !== C.height) surface.height=C.height;
     gl.viewport(0,0,surface.width,surface.height);
     gl.uniform2f(uniforms.resolution,surface.width,surface.height);
     gl.uniform1f(uniforms.focal,focalLength()*view.dpr);
     for (const key of ["forward","right","up"]) gl.uniform3fv(uniforms[key],basis[key]);
     gl.drawArrays(gl.TRIANGLES,0,6);
-    c.drawImage(surface,0,0,view.width,view.height);
-  };
+  }};
+  surface.addEventListener("webglcontextlost",event => {
+    event.preventDefault();
+    if (panoramaRenderer!==renderer) return;
+    try {setPanoramaRenderer(makeCPUPanorama(image));}
+    catch {setPanoramaRenderer(null);}
+  });
+  return renderer;
 }
 function makeCPUPanorama(image) {
   const source=document.createElement("canvas"); source.width=image.width; source.height=image.height;
@@ -726,7 +739,7 @@ function makeCPUPanorama(image) {
   const pixels=context.getImageData(0,0,source.width,source.height).data;
   const surface=document.createElement("canvas"), target=surface.getContext("2d");
   let frame=null;
-  return basis => {
+  return {surface,render(basis) {
     // Bound work on phones that disable WebGL. Stars and HUD stay sharp.
     const scale=280/Math.max(view.width,view.height);
     const w=Math.round(view.width*scale), h=Math.round(view.height*scale), f=focalLength()*scale;
@@ -747,16 +760,20 @@ function makeCPUPanorama(image) {
       for (let n=0;n<3;n++) frame.data[j+n]=clamp(pixels[k+n]*1.08+(n===0 ? 2 : n===1 ? 4 : 7),0,255);
       frame.data[j+3]=255;
     }
-    target.putImageData(frame,0,0); c.drawImage(surface,0,0,view.width,view.height);
-  };
+    target.putImageData(frame,0,0);
+  }};
 }
 function loadPanorama() {
   if (!window.Image || !document.createElement) return;
   const image=new Image();
   image.onload=() => {
     panoramaImage=image;
-    try {panoramaRenderer=makePanoramaRenderer(image);} catch {panoramaRenderer=null;}
-    requestDraw();
+    let renderer;
+    try {renderer=makePanoramaRenderer(image);}
+    catch {
+      try {renderer=makeCPUPanorama(image);} catch {renderer=null;}
+    }
+    setPanoramaRenderer(renderer);
   };
   image.src="assets/milky-way.jpg";
 }
@@ -926,11 +943,24 @@ function drawObjectLabels(candidates) {
   }
   c.restore();
 }
-function draw() {
+let lastScene = null;
+function draw(force=false) {
   const s=state(); updateSensorUI(s);
+  const signature = [view.width,view.height,view.dpr,panoramaImage,panoramaRenderer,
+    $("imagery").checked,$("labels").checked,$("grid").checked,$("horizon").checked,Boolean(s)];
+  if (s) signature.push(s.lat,s.lon,Math.floor(s.date.getTime()/1000),
+    ...s.camera.forward,...s.camera.right,...s.camera.up);
+  // Sensor timestamps and diagnostics still refresh, but identical camera
+  // poses within the same second need no new pixels. Compare exactly so
+  // even small real movements retain the existing tracking precision.
+  if (!force && lastScene && signature.length===lastScene.length &&
+      signature.every((value,i) => value===lastScene[i])) return;
+  lastScene=signature;
+  const imagery=Boolean(s && $("imagery").checked && panoramaRenderer);
+  $("panoramaLayer").hidden=!imagery;
   c.setTransform(view.dpr,0,0,view.dpr,0,0);
   c.clearRect(0,0,view.width,view.height);
-  c.fillStyle="#04080e"; c.fillRect(0,0,view.width,view.height);
+  if (!imagery) {c.fillStyle="#04080e"; c.fillRect(0,0,view.width,view.height);}
   if (!s) {
     if (panoramaImage) {
       c.save(); c.globalAlpha=.65;
@@ -943,8 +973,8 @@ function draw() {
   }
   const eqCamera=Object.fromEntries(["forward","right","up"].map(key =>
     [key,enuToEq(s.camera[key],s.lat,s.lst)]));
-  if ($("imagery").checked && panoramaRenderer)
-    panoramaRenderer(Object.fromEntries(Object.entries(eqCamera).map(([key,v]) => [key,mv(E2G,v)])));
+  if (imagery)
+    panoramaRenderer.render(Object.fromEntries(Object.entries(eqCamera).map(([key,v]) => [key,mv(E2G,v)])));
   resetLabelBoxes();
   const candidates=drawStars(eqCamera).concat(drawDeepSky(eqCamera));
   // The plane remains visible with the optional coordinate mesh switched off.
@@ -1324,14 +1354,20 @@ function stopSensors() {
 // Coalesce sensor bursts into one repaint per animation frame. A one-second
 // tick keeps sidereal time current and detects stale sensor readings.
 let frame = null;
-function requestDraw() {
+let forceRedraw = false;
+function requestDraw(force=false) {
+  forceRedraw ||= force===true;
   if (frame !== null || document.hidden) return;
-  frame = requestAnimationFrame(() => {frame=null; draw();});
+  frame = requestAnimationFrame(() => {
+    frame=null;
+    const force=forceRedraw; forceRedraw=false;
+    draw(force);
+  });
 }
 
 $("start").addEventListener("click",enableSensors);
 $("stop").addEventListener("click",stopSensors);
-for (const id of ["grid","horizon","imagery","labels"]) $(id).addEventListener("input",requestDraw);
+for (const id of ["grid","horizon","imagery","labels"]) $(id).addEventListener("input",() => requestDraw(true));
 function setDrawer(open) {
   $("drawer").hidden = !open;
   $("backdrop").hidden = !open;
@@ -1386,10 +1422,10 @@ document.addEventListener("fullscreenchange",onFullscreenChange);
 document.addEventListener("webkitfullscreenchange",onFullscreenChange);
 window.addEventListener("resize",resizeCanvas);
 window.visualViewport?.addEventListener("resize",resizeCanvas);
-window.addEventListener("orientationchange",requestDraw);
-window.screen?.orientation?.addEventListener("change",requestDraw);
+window.addEventListener("orientationchange",() => requestDraw(true));
+window.screen?.orientation?.addEventListener("change",() => requestDraw(true));
 document.addEventListener("visibilitychange",() => {
-  if (!sensors.active) {requestDraw(); return;}
+  if (!sensors.active) {requestDraw(true); return;}
   if (document.hidden) {
     // Stop geolocation and discard old orientation while in the background.
     detachSensors();
@@ -1402,7 +1438,7 @@ document.addEventListener("visibilitychange",() => {
   } else {
     startLocation();
     startOrientation();
-    requestDraw();
+    requestDraw(true);
   }
 });
 window.addEventListener("pagehide",stopSensors);
